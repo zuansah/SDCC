@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "BAData": {
+      "title": "BA Data",
+      "description": "Berita Acara Data representing a project handover",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "completed", "accepted", "rejected"] },
+        "projectName": { "type": "string" },
+        "siteName": { "type": "string" },
+        "preparedBy": { "type": "string" },
+        "companyName": { "type": "string" },
+        "locationName": { "type": "string" },
+        "installAddress": { "type": "string" },
+        "deliveryAddress": { "type": "string" },
+        "operationalHours": { "type": "string" },
+        "coordinator": { "type": "string" },
+        "installLocation": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "networkTopologyImg": { "type": "string" },
+        "mapCoordinateImg": { "type": "string" },
+        "equipmentPlacementImg": { "type": "string" },
+        "floorLayoutImg": { "type": "string" },
+        "frontViewImg": { "type": "string" },
+        "withPicImg": { "type": "string" },
+        "rackBeforeImg": { "type": "string" },
+        "rackAfterImg": { "type": "string" },
+        "snSdwanImg": { "type": "string" },
+        "snOntImg": { "type": "string" },
+        "speedtestGlobalImg": { "type": "string" },
+        "speedtestDomestikImg": { "type": "string" },
+        "cablingSdwanImg": { "type": "string" },
+        "sdwanBoxImg": { "type": "string" },
+        "pingTracerouteImg": { "type": "string" },
+        "pingAstinetImg": { "type": "string" },
+        "userId": { "type": "string", "description": "The user who created the document" }
+      },
+      "required": ["id", "createdAt", "status", "projectName", "siteName", "preparedBy", "companyName", "userId"]
+    },
+    "AssetEdit": {
+      "title": "Asset Edit",
+      "description": "User modifications and data validations for inventory assets",
+      "type": "object",
+      "properties": {
+        "serial_number": { "type": "string" },
+        "platform": { "type": "string" },
+        "device_model": { "type": "string" },
+        "hostname": { "type": "string" },
+        "tenant_name": { "type": "string" },
+        "position_category": { "type": "string" },
+        "sid_sdwan": { "type": "string" },
+        "sid_connectivity": { "type": "string" },
+        "sid_issued": { "type": "number" },
+        "region_witel": { "type": "string" },
+        "witel_norm": { "type": "string" },
+        "sto": { "type": "string" },
+        "location_address": { "type": "string" },
+        "latitude": { "type": "string" },
+        "longitude": { "type": "string" },
+        "has_coords": { "type": "number" },
+        "warehouse": { "type": "string" },
+        "warehouse_owner": { "type": "string" },
+        "warehouse_condition": { "type": "string" },
+        "no_kontrak": { "type": "string" },
+        "nama_pengadaan": { "type": "string" },
+        "kode_kontrak": { "type": "string" },
+        "nka": { "type": "string" },
+        "license_norm": { "type": "string" },
+        "license_status": { "type": "string" },
+        "system_ip": { "type": "string" },
+        "logical_id": { "type": "string" },
+        "software_version": { "type": "string" },
+        "ip_wan_public": { "type": "string" },
+        "is_modified": { "type": "boolean" },
+        "is_custom_added": { "type": "boolean" },
+        "validation_status": { "type": "string" },
+        "validation_notes": { "type": "string" },
+        "validated_by": { "type": "string" },
+        "validated_at": { "type": "string" },
+        "last_modified_by": { "type": "string" },
+        "last_modified_at": { "type": "string" }
+      },
+      "required": ["serial_number", "is_modified"]
+    },
+    "UserSession": {
+      "title": "User Session",
+      "description": "Real-time active user presence, device, and heartbeat session",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "currentView": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "country": { "type": "string" },
+        "city": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "loginAt": { "type": "string" },
+        "lastActiveAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["ONLINE", "IDLE", "OFFLINE", "TERMINATED"] }
+      },
+      "required": ["uid", "email", "loginAt", "lastActiveAt", "status"]
+    },
+    "AccessLog": {
+      "title": "Access Log",
+      "description": "User access events, security audits, and view tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "country": { "type": "string" },
+        "userAgent": { "type": "string" }
+      },
+      "required": ["timestamp", "userEmail", "action"]
+    }
+  },
+  "firestore": {
+    "bas/{baId}": {
+      "schema": { "$ref": "#/entities/BAData" },
+      "description": "Berita Acara Documents"
+    },
+    "asset_edits/{assetId}": {
+      "schema": { "$ref": "#/entities/AssetEdit" },
+      "description": "User edits and certifications for inventory assets"
+    },
+    "user_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Real-time active user sessions"
+    },
+    "access_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AccessLog" },
+      "description": "User access audit logs"
+    }
+  }
+}

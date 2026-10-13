@@ -1,0 +1,6 @@
+{
+  "name": "Telkom BA Generator Dashboard",
+  "description": "Dashboard for generating and managing Berita Acara (BA) reports for Telkom Indonesia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

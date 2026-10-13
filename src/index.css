@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* Cyber Security Policy: Complete selection & clipboard lockdown */
+*, *::before, *::after, input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: white !important;
+  }
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+  .print\:mb-0 {
+    margin-bottom: 0 !important;
+  }
+  .print\:w-full {
+    width: 100% !important;
+  }
+  .print\:h-screen {
+    height: 100vh !important;
+  }
+  .print\:page-break-after-always {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+}
