@@ -69,11 +69,6 @@ export default function Login({ onMfaVerified }: LoginProps) {
     } catch (err: any) {
       console.warn("MFA check failed:", err);
       if (err.code === 'resource-exhausted' || err.code === 'unavailable' || err.message?.includes('Quota limit exceeded') || err.message?.includes('offline')) {
-        if (user.email === 'zuansah.munggaran@gmail.com' || user.email === 'zuansah.munggaran@telkom.co.id') {
-          // Bypass MFA during quota limit for super admins so they aren't locked out
-          onMfaVerified?.();
-          return;
-        }
         setError('Database quota exceeded. Login is temporarily restricted. Please try again tomorrow.');
       } else {
         setError(err.message || 'Failed to check MFA status');

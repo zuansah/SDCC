@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Globe, MapPin, RefreshCw, KeyRound, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Globe, MapPin, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { GeoLocationInfo, logAccessEvent } from '../services/accessLogger';
 
 interface GeoRestrictionBlockedProps {
@@ -17,25 +17,17 @@ export default function GeoRestrictionBlocked({
   currentUserEmail,
   isSuperAdmin,
 }: GeoRestrictionBlockedProps) {
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
-  const handleBypassSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Emergency PIN or Super Admin credential check
-    if (adminPin === 'TELKOM-SUPERADMIN-2026' || adminPin === 'admin123' || isSuperAdmin) {
+  const handleAdminBypassClick = () => {
+    if (isSuperAdmin) {
       logAccessEvent({
         action: 'GEO_BLOCKED',
-        details: `Super Admin emergency bypass accepted from ${geoInfo?.countryName || 'Unknown'} (${geoInfo?.ip || ''})`,
+        details: `Super Admin bypass accepted from ${geoInfo?.countryName || 'Unknown'} (${geoInfo?.ip || ''})`,
         userEmail: currentUserEmail || 'superadmin@telkom.co.id',
         role: 'Super Admin',
       });
       onAdminBypass();
-    } else {
-      setPinError(true);
-      setTimeout(() => setPinError(false), 3000);
     }
   };
 
@@ -105,54 +97,16 @@ export default function GeoRestrictionBlocked({
             <span>{retrying ? 'Memeriksa Kembali Jaringan...' : 'Cek Ulang Lokasi Jaringan'}</span>
           </button>
 
-          {isSuperAdmin ? (
+          {isSuperAdmin && (
             <button
-              onClick={onAdminBypass}
+              onClick={handleAdminBypassClick}
               className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700 transition cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>Bypass Sebagai Super Admin ({currentUserEmail})</span>
             </button>
-          ) : (
-            <button
-              onClick={() => setShowAdminLogin(!showAdminLogin)}
-              className="text-xs text-slate-400 hover:text-slate-200 transition flex items-center justify-center gap-1 mx-auto cursor-pointer"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Super Admin Emergency Override</span>
-            </button>
           )}
         </div>
-
-        {/* Optional PIN override drawer */}
-        {showAdminLogin && !isSuperAdmin && (
-          <form onSubmit={handleBypassSubmit} className="pt-3 border-t border-slate-800 space-y-3 text-left animate-in fade-in">
-            <label className="block text-[11px] font-semibold text-slate-300">
-              Masukkan Kunci Otorisasi Darurat Super Admin:
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={adminPin}
-                onChange={(e) => setAdminPin(e.target.value)}
-                placeholder="Kode Otorisasi Super Admin..."
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition cursor-pointer border border-slate-700"
-              >
-                Verifikasi
-              </button>
-            </div>
-            {pinError && (
-              <p className="text-[11px] text-red-400 flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                Kunci otorisasi tidak valid.
-              </p>
-            )}
-          </form>
-        )}
 
         <div className="text-[10px] text-slate-500 border-t border-slate-800/60 pt-3">
           PT Telkom Indonesia (Persero) Tbk · Divisi Network & Services Management (NSM)

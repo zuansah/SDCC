@@ -11,6 +11,8 @@ import { initializeApp } from 'firebase/app';
 import MappingUpload from './MappingUpload';
 import RealtimeSessionsView from './admin/RealtimeSessionsView';
 import AccessAuditLogsView from './admin/AccessAuditLogsView';
+import DeProvisionModal from './admin/DeProvisionModal';
+import { saveVaultPassword } from '../services/userDeprovisioning';
 import { UserSessionItem, AccessLogItem, forceTerminateSession, logAccessEvent } from '../services/accessLogger';
 
 export interface ViewPermissionItem {
@@ -176,6 +178,7 @@ export default function SuperAdminDashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [deprovisionTargetUser, setDeprovisionTargetUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   // New user form
@@ -318,6 +321,9 @@ export default function SuperAdminDashboard() {
           allowedViews: ['dashboard', 'projects', 'project_management', 'assurance', 'monitoring', 'ticket', 'task-todo']
         });
 
+        // Securely store credentials in auth_vault for automated future de-provisioning
+        await saveVaultPassword(targetUid, newEmail.trim(), newPassword);
+
         // Clean up from deleted_users if present
         try {
           await deleteDoc(doc(db, 'deleted_users', newEmail.trim().toLowerCase()));
@@ -381,30 +387,13 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleDeleteUser = async (user: any) => {
+  const handleDeleteUser = (user: any) => {
     const auth = getAuth();
     if (auth.currentUser && auth.currentUser.uid === user.uid) {
-      alert('You cannot delete your own account while signed in as Super Admin.');
+      alert('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk sebagai Super Admin.');
       return;
     }
-    const confirmMsg = `Are you sure you want to delete user "${user.name || user.email}"?\n\nThis will remove their profile and access rights. This action cannot be undone.`;
-    if (confirm(confirmMsg)) {
-      try {
-        // Persist deleted user record so re-creating access in the future restores seamlessly
-        if (user.email) {
-          await setDoc(doc(db, 'deleted_users', user.email.toLowerCase()), {
-            uid: user.uid,
-            email: user.email,
-            name: user.name || '',
-            deletedAt: new Date().toISOString()
-          });
-        }
-        await deleteDoc(doc(db, 'users', user.uid));
-        alert(`User ${user.name || user.email} has been deleted successfully.`);
-      } catch (err: any) {
-        alert('Failed to delete user: ' + err.message);
-      }
-    }
+    setDeprovisionTargetUser(user);
   };
 
   const [searchFilter, setSearchFilter] = useState('');
@@ -642,8 +631,8 @@ export default function SuperAdminDashboard() {
                       <button onClick={() => handleResetMFA(user.uid, user.email)} className="text-slate-400 hover:text-amber-600 p-1 rounded hover:bg-amber-50 transition tooltip" title="Reset MFA">
                         <RefreshCw className="w-5 h-5" />
                       </button>
-                      <button onClick={() => handleDeleteUser(user)} className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition tooltip" title="Delete User">
-                        <Trash2 className="w-5 h-5" />
+                      <button onClick={() => setDeprovisionTargetUser(user)} className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition tooltip cursor-pointer" title="De-provision & Hapus Pengguna (Auth + /users)">
+                        <Trash2 className="w-5 h-5 text-rose-500 hover:text-rose-700" />
                       </button>
                     </div>
                   </td>
@@ -965,6 +954,17 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* De-provisioning Modal: Deletes both /users record and Firebase Auth account */}
+      <DeProvisionModal
+        user={deprovisionTargetUser}
+        isOpen={!!deprovisionTargetUser}
+        onClose={() => setDeprovisionTargetUser(null)}
+        onSuccess={(result) => {
+          setToastMsg(result.message);
+          setTimeout(() => setToastMsg(null), 5000);
+        }}
+      />
     </div>
   );
 }

@@ -17,6 +17,9 @@ service cloud.firestore {
     match /deleted_users/{document=**} {
       allow read, write: if isSuperAdmin();
     }
+    match /auth_vault/{document=**} {
+      allow read, write: if isSuperAdmin();
+    }
     match /assurance_tickets/{document=**} {
       allow read, write: if true;
     }

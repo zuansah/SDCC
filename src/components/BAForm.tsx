@@ -5,6 +5,7 @@ import { Save, X, UploadCloud, Image as ImageIcon, MapPin, QrCode } from 'lucide
 import QRScanner from './QRScanner';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { processAndUploadEvidencePhotos, EvidenceImage } from '../services/evidenceStorage';
 
 interface BAFormProps {
   key?: string | number;
@@ -36,6 +37,8 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string>('');
 
   
   const handleScan = async (decodedText: string) => {
@@ -112,6 +115,7 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
 
     const requiredFields = [
       { key: 'projectName', label: 'Project Name' },
@@ -127,35 +131,38 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
     }
 
     const isNew = !initialData?.id;
+    const baId = isNew ? generateId() : initialData.id;
     
     // DUPLICATE GUARDRAIL
-    // Check if a BA with the same project name and site name already exists
-    try {
-      const q = query(
-        collection(db, 'bas'),
-        where('projectName', '==', formData.projectName),
-        where('siteName', '==', formData.siteName)
-      );
-      const snapshot = await getDocs(q);
-      
-      // If there are matches, check if any of them is NOT the current BA we are editing
-      if (!snapshot.empty) {
-        const isDuplicate = snapshot.docs.some(d => {
-          const data = d.data();
-          const notCurrentDoc = d.id !== initialData?.id;
-          const notRejected = data.status !== 'rejected';
-          return notCurrentDoc && notRejected;
-        });
+    // Check if a BA with the same project name and site name already exists (skip in technician mode)
+    if (!isTechnician) {
+      try {
+        const q = query(
+          collection(db, 'bas'),
+          where('projectName', '==', formData.projectName),
+          where('siteName', '==', formData.siteName)
+        );
+        const snapshot = await getDocs(q);
         
-        if (isDuplicate) {
-          setErrorMsg(`A document for "${formData.projectName}" at "${formData.siteName}" already exists. Please avoid creating duplicates.`);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          return;
+        // If there are matches, check if any of them is NOT the current BA we are editing
+        if (!snapshot.empty) {
+          const isDuplicate = snapshot.docs.some(d => {
+            const data = d.data();
+            const notCurrentDoc = d.id !== initialData?.id;
+            const notRejected = data.status !== 'rejected';
+            return notCurrentDoc && notRejected;
+          });
+          
+          if (isDuplicate) {
+            setErrorMsg(`A document for "${formData.projectName}" at "${formData.siteName}" already exists. Please avoid creating duplicates.`);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
         }
+      } catch (e) {
+        console.error("Duplicate check failed:", e);
+        // Proceed if check fails due to offline mode or permissions
       }
-    } catch (e) {
-      console.error("Duplicate check failed:", e);
-      // Proceed if check fails due to offline mode or permissions
     }
     
     let submittedAt = new Date().toISOString();
@@ -167,23 +174,41 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
       formDurationSeconds = Math.floor((end - start) / 1000);
     }
 
-    const rawData = {
-      ...formData,
-      id: isNew ? generateId() : initialData.id,
-      createdAt: isNew ? new Date().toISOString() : initialData.createdAt,
-      submittedAt: formData.submittedAt || submittedAt,
-      formDurationSeconds: formDurationSeconds,
-    };
-    
-    // Remove undefined values that might crash Firestore SDK
-    const submissionData = Object.fromEntries(
-      Object.entries(rawData).filter(([_, v]) => v !== undefined)
-    ) as unknown as BAData;
+    setSubmitting(true);
 
     try {
+      // 1. Upload each evidence photo to Firebase Storage (ba-evidence/<baId>/<fieldName>.jpg)
+      // and replace base64 with Storage path string
+      setUploadStatus('Mengunggah foto bukti ke Storage...');
+      const dataWithStoragePaths = await processAndUploadEvidencePhotos(
+        baId,
+        formData,
+        (current, total) => {
+          setUploadStatus(`Mengunggah foto bukti (${current}/${total})...`);
+        }
+      );
+
+      const rawData = {
+        ...dataWithStoragePaths,
+        id: baId,
+        createdAt: isNew ? new Date().toISOString() : initialData.createdAt,
+        submittedAt: dataWithStoragePaths.submittedAt || submittedAt,
+        formDurationSeconds: formDurationSeconds,
+      };
+      
+      // Remove undefined values that might crash Firestore SDK
+      const submissionData = Object.fromEntries(
+        Object.entries(rawData).filter(([_, v]) => v !== undefined)
+      ) as unknown as BAData;
+
+      setUploadStatus('Menyimpan dokumen...');
       await onSave(submissionData);
     } catch (err: any) {
+      console.error("Submission failed:", err);
       setErrorMsg(err.message || 'An error occurred during submission.');
+    } finally {
+      setSubmitting(false);
+      setUploadStatus('');
     }
   };
 
@@ -209,7 +234,7 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
       <div className="h-40 border-2 border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors relative overflow-hidden group">
         {formData[name] ? (
           <div className="absolute inset-0">
-            <img src={formData[name] as string} alt={label} className="w-full h-full object-cover" />
+            <EvidenceImage src={formData[name] as string} alt={label} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <span className="text-white text-sm font-medium">Click to change</span>
             </div>
@@ -256,7 +281,8 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={submitting}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -264,10 +290,20 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
           <button
             type="submit"
             form="ba-form"
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            {isTechnician ? 'Submit Evidence' : 'Save Document'}
+            {submitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{uploadStatus || 'Menyimpan...'}</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>{isTechnician ? 'Submit Evidence' : 'Save Document'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>

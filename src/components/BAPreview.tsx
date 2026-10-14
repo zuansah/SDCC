@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BAData } from '../types';
 import { ArrowLeft, Printer, Edit2, MapPin, AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { exportBaReportToPdf } from '../utils/pdfExport';
+import { EvidenceImage, preloadBAEvidence } from '../services/evidenceStorage';
 
 interface BAPreviewProps {
   ba: BAData;
@@ -13,6 +14,10 @@ interface BAPreviewProps {
 export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number } | null>(null);
+
+  useEffect(() => {
+    preloadBAEvidence(ba);
+  }, [ba]);
 
   const approverName = ba.status === 'accepted' && ba.acceptedBy 
     ? ba.acceptedBy 
@@ -118,7 +123,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
   const ImgBox = ({ label, src }: { label: string, src?: string }) => (
     <div className="h-full w-full border border-dashed border-slate-400 rounded-lg flex flex-col items-center justify-center relative overflow-hidden bg-slate-50">
       {src ? (
-        <img src={src} alt={label} className="absolute inset-0 w-full h-full object-contain p-2" />
+        <EvidenceImage src={src} alt={label} className="absolute inset-0 w-full h-full object-contain p-2" />
       ) : (
         <div className="text-slate-300 font-medium text-sm text-center px-4">{label}<br/><span className="text-xs font-normal">Sisipkan foto di sini</span></div>
       )}
@@ -275,7 +280,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
         <PageContainer title="NETWORK TOPOLOGI" pageNumber={3}>
           <div className="h-full flex items-center justify-center p-8">
              {ba.networkTopologyImg ? (
-               <img src={ba.networkTopologyImg} className="max-w-full max-h-full object-contain" alt="Network Topology" />
+               <EvidenceImage src={ba.networkTopologyImg} className="max-w-full max-h-full object-contain" alt="Network Topology" />
              ) : (
                <div className="text-center text-slate-400 border-2 border-dashed border-slate-300 w-full h-full flex flex-col items-center justify-center rounded-lg">
                  <h2 className="text-xl font-bold mb-2">NETWORK TOPOLOGY DIAGRAM</h2>
@@ -308,9 +313,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
             </div>
             <div className="flex-1 flex flex-col border-2 border-dashed border-slate-300 items-center justify-center relative bg-slate-50">
               {ba.mapCoordinateImg ? (
-                ba.mapCoordinateImg.startsWith('data:image') ? (
-                  <img src={ba.mapCoordinateImg} className="absolute inset-0 w-full h-full object-cover" alt="Map" />
-                ) : (
+                ba.mapCoordinateImg.startsWith('http') ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-50 text-center z-10">
                     <MapPin className="w-8 h-8 text-blue-500 mb-2" />
                     <h2 className="font-bold text-lg text-slate-700 mb-1">MAP / SITE COORDINATE</h2>
@@ -318,6 +321,8 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
                       {ba.mapCoordinateImg}
                     </a>
                   </div>
+                ) : (
+                  <EvidenceImage src={ba.mapCoordinateImg} className="absolute inset-0 w-full h-full object-cover" alt="Map" />
                 )
               ) : ba.mapCoordinateLink ? (
                 <iframe 
@@ -352,7 +357,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
               </div>
               <div className="flex-1 border-2 border-dashed border-slate-300 mt-2 flex flex-col items-center justify-center relative bg-slate-50">
                 {ba.equipmentPlacementImg ? (
-                  <img src={ba.equipmentPlacementImg} className="absolute inset-0 w-full h-full object-contain p-4" alt="Equipment" />
+                  <EvidenceImage src={ba.equipmentPlacementImg} className="absolute inset-0 w-full h-full object-contain p-4" alt="Equipment" />
                 ) : (
                   <div className="text-center text-slate-400">
                     <h2 className="font-bold text-lg mb-1">RACK / EQUIPMENT PLACEMENT</h2>
@@ -368,7 +373,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
         <PageContainer title="LAYOUT" pageNumber={6}>
           <div className="h-full flex items-center justify-center p-8">
              {ba.floorLayoutImg ? (
-               <img src={ba.floorLayoutImg} className="max-w-full max-h-full object-contain" alt="Floor Layout" />
+               <EvidenceImage src={ba.floorLayoutImg} className="max-w-full max-h-full object-contain" alt="Floor Layout" />
              ) : (
                <div className="text-center text-slate-400 border-2 border-dashed border-slate-300 w-full h-full flex flex-col items-center justify-center rounded-lg bg-slate-50">
                  <h2 className="text-xl font-bold mb-2">FLOOR / ROOM LAYOUT</h2>

@@ -30,38 +30,17 @@ import {
   GeoLocationInfo 
 } from './services/accessLogger';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
 import { collection, setDoc, doc, deleteDoc, query, orderBy, getDocs, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { initCompleteClipboardLockdown, initDevToolsWatcher, sanitizeBrowserUrl } from './utils/security';
+import { IMAGE_FIELDS, processAndUploadEvidencePhotos } from './services/evidenceStorage';
 
 export type ViewState = 
   | 'dashboard' | 'new-ba' | 'edit-ba' | 'preview-ba' 
   | 'projects' | 'project_management' | 'orders' | 'tracking'
   | 'monitoring' | 'ticket' | 'assurance' | 'controller' | 'license'
   | 'inventory' | 'tracing' | 'identification' | 'label' | 'task-todo' | 'mass-testing-uat' | 'open-sdwan' | 'automation' | 'api' | 'super_admin' | 'vendor_bas';
-
-
-const IMAGE_FIELDS = [
-  'networkTopologyImg',
-  'mapCoordinateImg',
-  'equipmentPlacementImg',
-  'floorLayoutImg',
-  'frontViewImg',
-  'withPicImg',
-  'rackBeforeImg',
-  'rackAfterImg',
-  'snSdwanImg',
-  'snOntImg',
-  'modemMainImg',
-  'modemBackupImg',
-  'speedtestGlobalImg',
-  'speedtestDomestikImg',
-  'cablingSdwanImg',
-  'sdwanBoxImg',
-  'pingTracerouteImg',
-  'pingAstinetImg'
-];
 
 
 interface ErrorBoundaryProps {
@@ -239,7 +218,7 @@ export default function App() {
 
   // 4. Remote Session Termination Listener (Super Admin force disconnect)
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.isAnonymous) return;
     const unsub = onSnapshot(doc(db, 'user_sessions', user.uid), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
@@ -316,46 +295,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && !user.isAnonymous) {
       const fetchUser = async () => {
         try {
           const document = await getDoc(doc(db, 'users', user.uid));
           setDbError(null);
           if (document.exists()) {
             const data = document.data();
-            if ((user.email === 'zuansah.munggaran@gmail.com' || user.email === 'zuansah.munggaran@telkom.co.id') && data.role !== 'Super Admin') {
-              const upgraded = { ...data, role: 'Super Admin' };
-              await setDoc(doc(db, 'users', user.uid), upgraded, { merge: true });
-              setUserData(upgraded);
-            } else {
-              setUserData(data);
-            }
+            setUserData(data);
           } else {
-            // Auto-initialize first user as Super Admin
-            const newAdmin = {
+            // Default new self-created account to least privilege (Viewer)
+            const newUser = {
               email: user.email,
               name: user.displayName || user.email?.split('@')[0],
-              role: (user.email === 'zuansah.munggaran@gmail.com' || user.email === 'zuansah.munggaran@telkom.co.id') ? 'Super Admin' : 'Admin',
+              role: 'Viewer',
               mfaEnabled: false,
               mfaSecret: '',
               allowedViews: ['dashboard', 'projects', 'project_management', 'assurance', 'monitoring', 'ticket', 'task-todo']
             };
-            await setDoc(doc(db, 'users', user.uid), newAdmin);
-            setUserData(newAdmin);
+            await setDoc(doc(db, 'users', user.uid), newUser);
+            setUserData(newUser);
           }
         } catch (error: any) {
           console.warn("Firestore user read error:", error);
           if (error.code === 'resource-exhausted' || error.code === 'unavailable' || error.message?.includes('Quota limit exceeded') || error.message?.includes('offline')) {
             setDbError("Database access restricted. You have reached the daily free tier read limit. Please try again tomorrow.");
-            if (user.email === 'zuansah.munggaran@gmail.com' || user.email === 'zuansah.munggaran@telkom.co.id') {
-              setUserData({
-                email: user.email,
-                name: user.displayName || user.email?.split('@')[0],
-                role: 'Super Admin',
-                mfaEnabled: false,
-                allowedViews: ['dashboard', 'projects', 'project_management', 'assurance', 'monitoring', 'ticket', 'task-todo']
-              });
-            }
           } else {
             setDbError(error.message || "Failed to connect to database.");
           }
@@ -369,6 +333,8 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('role') === 'technician') {
       setIsTechnician(true);
+      // Public form: get an anonymous session so the scoped `bas` create rule accepts it.
+      signInAnonymously(auth).catch((e) => console.warn('Anonymous sign-in failed:', e));
     }
   }, []);
 
@@ -409,31 +375,14 @@ export default function App() {
         data.userId = user.uid;
       }
       
-      // Separate main data and images
-      const mainData = { ...data };
-      const imagesToSave: Record<string, string> = {};
+      // Ensure all evidence photos are uploaded to Firebase Storage and stored as paths
+      const sanitizedData = await processAndUploadEvidencePhotos(data.id, data);
       
-      IMAGE_FIELDS.forEach(field => {
-        if (mainData[field as keyof BAData]) {
-          imagesToSave[field] = mainData[field as keyof BAData] as string;
-          delete mainData[field as keyof BAData];
-        }
-      });
-      
-      // Save main document (without images)
+      // Save document to Firestore (photo fields contain Storage paths)
       const docRef = doc(db, 'bas', data.id);
-      await setDoc(docRef, mainData);
+      await setDoc(docRef, sanitizedData);
       
-      // Save each image in a subcollection document to bypass 1MB limit
-      for (const [field, base64] of Object.entries(imagesToSave)) {
-        // Only save if it's a data URL or real string
-        if (base64) {
-          const imgDocRef = doc(db, 'bas', data.id, 'images', field);
-          await setDoc(imgDocRef, { data: base64 });
-        }
-      }
-      
-      setActiveBA(data); // Provide full data (with images) to preview
+      setActiveBA(sanitizedData as BAData);
       setView('preview-ba');
     } catch (e: any) {
       console.error("Failed to save to Firestore:", e);
@@ -507,9 +456,9 @@ export default function App() {
       snapshot.forEach(doc => {
         images[doc.id] = doc.data().data;
       });
-      return { ...ba, ...images };
+      return { ...images, ...ba };
     } catch (e) {
-      console.error("Failed to fetch images", e);
+      console.warn("Legacy images subcollection fetch:", e);
       return ba;
     }
   };
@@ -605,28 +554,12 @@ export default function App() {
                 data.userId = user.uid;
               }
               
-              // Separate main data and images
-              const mainData = { ...data };
-              const imagesToSave: Record<string, string> = {};
+              // Ensure all evidence photos are uploaded to Firebase Storage and stored as paths
+              const sanitizedData = await processAndUploadEvidencePhotos(data.id, data);
               
-              IMAGE_FIELDS.forEach(field => {
-                if (mainData[field as keyof BAData]) {
-                  imagesToSave[field] = mainData[field as keyof BAData] as string;
-                  delete mainData[field as keyof BAData];
-                }
-              });
-              
-              // Save main document (without images)
+              // Save main document with Storage paths
               const docRef = doc(db, 'bas', data.id);
-              await setDoc(docRef, mainData);
-              
-              // Save each image in a subcollection document to bypass 1MB limit
-              for (const [field, base64] of Object.entries(imagesToSave)) {
-                if (base64) {
-                  const imgDocRef = doc(db, 'bas', data.id, 'images', field);
-                  await setDoc(imgDocRef, { data: base64 });
-                }
-              }
+              await setDoc(docRef, sanitizedData);
               
               setSubmitted(true);
             } catch (e: any) {
