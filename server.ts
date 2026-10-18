@@ -77,6 +77,90 @@ app.post('/api/ai-assistant/chat', async (req, res) => {
   }
 });
 
+// Cici Agent multi-step loop step endpoint
+app.post('/api/cici/chat-step', async (req, res) => {
+  try {
+    const { contents, systemInstruction, tools, model } = req.body;
+    const modelToUse = model || 'gemini-2.5-flash';
+
+    const config: any = {
+      systemInstruction: systemInstruction || 'You are Cici, the AI agent of NSM.',
+      temperature: 0.1,
+    };
+
+    if (tools && Array.isArray(tools) && tools.length > 0) {
+      config.tools = [{ functionDeclarations: tools }];
+    }
+
+    const response = await ai.models.generateContent({
+      model: modelToUse,
+      contents,
+      config,
+    });
+
+    res.json({
+      candidate: response.candidates?.[0],
+      text: response.text,
+      usageMetadata: response.usageMetadata,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/cici/chat-step:', error);
+    res.status(500).json({ error: error?.message || 'Failed to complete Cici agent step' });
+  }
+});
+
+// Cici Document Writer endpoint using Pro model
+app.post('/api/cici/write-document', async (req, res) => {
+  try {
+    const { title, kind, instructions, sources, gatheredData } = req.body;
+
+    const docPrompt = `You are Cici's document authoring engine for Telkom Indonesia NSM.
+Write a comprehensive, professional Markdown ${kind || 'report'} titled "${title}".
+Use clean formatting with headers (#, ##, ###), markdown data tables where appropriate, key takeaways, and operational recommendations.
+Every number, device, or status must come from the gathered data below.
+End the document with a "Sumber data" section listing the data feeds and timestamps.
+
+INSTRUCTIONS:
+${instructions || 'Generate a complete operational summary based on the provided data.'}
+
+GATHERED OPERATIONAL DATA:
+${JSON.stringify(gatheredData || {}, null, 2)}
+
+SOURCES:
+${(sources || ['NSM Controller Telemetry', 'Asset Inventory Feed', 'Intelligence Engine']).join(', ')}
+`;
+
+    let generatedText = '';
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: docPrompt,
+        config: {
+          systemInstruction: 'You are Cici, writing high-grade operational Markdown documentation for Telkom Indonesia operations.',
+          temperature: 0.2,
+        },
+      });
+      generatedText = response.text || '';
+    } catch (proErr: any) {
+      console.warn('Pro model failed or throttled, falling back to Flash for document generation:', proErr?.message);
+      const fallbackResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: docPrompt,
+        config: {
+          systemInstruction: 'You are Cici, writing high-grade operational Markdown documentation for Telkom Indonesia operations.',
+          temperature: 0.2,
+        },
+      });
+      generatedText = fallbackResponse.text || '';
+    }
+
+    res.json({ markdown: generatedText });
+  } catch (error: any) {
+    console.error('Error in /api/cici/write-document:', error);
+    res.status(500).json({ error: error?.message || 'Failed to write document' });
+  }
+});
+
 // Helper to build field-specific vision instructions
 function getPromptForField(fieldName: string, formSerial?: string): string {
   switch (fieldName) {

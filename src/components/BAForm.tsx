@@ -532,21 +532,21 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
                   className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
                 >
                   <option value="">Select Device</option>
-                  <option value="FORTINET — FortiGate 40F">FORTINET — FortiGate 40F</option>
-                  <option value="CISCO — ISR1100-4G-LTE">CISCO — ISR1100-4G-LTE</option>
-                  <option value="CISCO — ISR1100-4G">CISCO — ISR1100-4G</option>
-                  <option value="CISCO — ISR1100X-4G">CISCO — ISR1100X-4G</option>
-                  <option value="CISCO — ISR1100-4GLTEGB">CISCO — ISR1100-4GLTEGB</option>
-                  <option value="CISCO — ISR1100-6G">CISCO — ISR1100-6G</option>
-                  <option value="CISCO — C8300-1N1S-4T2X">CISCO — C8300-1N1S-4T2X</option>
-                  <option value="CISCO — C8300-1N1S-6T">CISCO — C8300-1N1S-6T</option>
-                  <option value="CISCO — C8200-1N-4T">CISCO — C8200-1N-4T</option>
-                  <option value="CISCO — C1111X-8P">CISCO — C1111X-8P</option>
-                  <option value="CISCO — C1121X-8PLTEP">CISCO — C1121X-8PLTEP</option>
-                  <option value="CISCO — vEdge 2001">CISCO — vEdge 2001</option>
-                  <option value="VELO — VELO 710">VELO — VELO 710</option>
-                  <option value="VELO — VELO 510">VELO — VELO 510</option>
-                  <option value="VELO — vEdge 2000">VELO — vEdge 2000</option>
+                  <option value="FORTINET - FortiGate 40F">FORTINET - FortiGate 40F</option>
+                  <option value="CISCO - ISR1100-4G-LTE">CISCO - ISR1100-4G-LTE</option>
+                  <option value="CISCO - ISR1100-4G">CISCO - ISR1100-4G</option>
+                  <option value="CISCO - ISR1100X-4G">CISCO - ISR1100X-4G</option>
+                  <option value="CISCO - ISR1100-4GLTEGB">CISCO - ISR1100-4GLTEGB</option>
+                  <option value="CISCO - ISR1100-6G">CISCO - ISR1100-6G</option>
+                  <option value="CISCO - C8300-1N1S-4T2X">CISCO - C8300-1N1S-4T2X</option>
+                  <option value="CISCO - C8300-1N1S-6T">CISCO - C8300-1N1S-6T</option>
+                  <option value="CISCO - C8200-1N-4T">CISCO - C8200-1N-4T</option>
+                  <option value="CISCO - C1111X-8P">CISCO - C1111X-8P</option>
+                  <option value="CISCO - C1121X-8PLTEP">CISCO - C1121X-8PLTEP</option>
+                  <option value="CISCO - vEdge 2001">CISCO - vEdge 2001</option>
+                  <option value="VELO - VELO 710">VELO - VELO 710</option>
+                  <option value="VELO - VELO 510">VELO - VELO 510</option>
+                  <option value="VELO - vEdge 2000">VELO - vEdge 2000</option>
                 </select>
               </div>
               {renderInputGroup("Serial Number", "serialNumber")}

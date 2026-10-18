@@ -14,8 +14,10 @@ import {
   Layers,
   Calendar,
   Check,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
+import { useCici } from '../cici/context/CiciContext';
 import { useOrdersData } from '../hooks/useOrdersData';
 import {
   OrderItem,
@@ -909,7 +911,7 @@ export default function OrderStatusView() {
           {/* Left: Title + Badge + Freshness line */}
           <div className="shrink-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-base md:text-lg font-bold text-slate-900 tracking-tight">Order Status — SD-WAN</h1>
+              <h1 className="text-base md:text-lg font-bold text-slate-900 tracking-tight">Order Status: SD-WAN</h1>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                 WFM Live
               </span>
@@ -1768,6 +1770,7 @@ interface OrderDetailDrawerProps {
 }
 
 function OrderDetailDrawer({ order, meta, onClose }: OrderDetailDrawerProps) {
+  const { askCici } = useCici();
   const steps: OrderStep[] = order.steps || [];
   const standardStages: string[] = meta?.stages?.[order.type] || [];
   const otherStageName: string = meta?.otherStage || 'Other task';
@@ -1902,6 +1905,18 @@ function OrderDetailDrawer({ order, meta, onClose }: OrderDetailDrawerProps) {
                 {firstTaskBadge}
               </span>
             )}
+            <button
+              onClick={() => askCici(`Ringkas status order ${order.id} untuk customer ${order.customer || ''}`, {
+                menu: 'orders',
+                selectedItemType: 'order',
+                selectedItemId: order.id,
+                selectedItemData: order,
+              })}
+              className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center gap-1.5 transition text-xs font-semibold cursor-pointer shadow-2xs ml-auto"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Tanya Cici</span>
+            </button>
           </div>
         </div>
 

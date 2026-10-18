@@ -38,10 +38,12 @@ export interface ChronicDevice {
   primaryCause?: string;
   model?: string;
   lastFlapTime?: string;
+  reason?: string;
 }
 
 export interface OpenTicketTriage {
   ticketId?: string;
+  ticketNumber?: string;
   serial: string;
   name: string;
   tenant?: string;
@@ -102,6 +104,8 @@ export interface ChronicallyUnstableDevice {
 export interface IntelligencePayload {
   generatedAt: string;
   version?: string;
+  outageEvents?: number;
+  devicesAnalysed?: number;
   summary: IntelligenceSummary;
   scheduledPatterns: ScheduledPattern[];
   chronicDevices: ChronicDevice[];

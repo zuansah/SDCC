@@ -17,8 +17,11 @@ import OrderStatusView from './components/OrderStatusView';
 import AssuranceView from './components/AssuranceView';
 import LabelTraceView from './components/LabelTraceView';
 import TaskTodoView from './components/TaskTodoView';
-import AIAssistantView from './components/AIAssistantView';
 import IntelligenceView from './components/IntelligenceView';
+import { CiciFullView } from './cici/components/CiciFullView';
+import { CiciDrawer } from './cici/components/CiciDrawer';
+import { CiciFloatingButton } from './cici/components/CiciFloatingButton';
+import { CiciProvider, useCici } from './cici/context/CiciContext';
 import DevToolsBlockedBanner from './components/DevToolsBlockedBanner';
 import GeoRestrictionBlocked from './components/GeoRestrictionBlocked';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
@@ -41,8 +44,23 @@ import { IMAGE_FIELDS, processAndUploadEvidencePhotos } from './services/evidenc
 export type ViewState = 
   | 'dashboard' | 'new-ba' | 'edit-ba' | 'preview-ba' 
   | 'projects' | 'project_management' | 'orders' | 'tracking'
-  | 'monitoring' | 'ticket' | 'assurance' | 'controller' | 'license' | 'ai-assistant' | 'intelligence'
+  | 'monitoring' | 'ticket' | 'assurance' | 'controller' | 'license' | 'cici' | 'intelligence'
   | 'inventory' | 'tracing' | 'identification' | 'label' | 'task-todo' | 'mass-testing-uat' | 'open-sdwan' | 'automation' | 'api' | 'super_admin' | 'vendor_bas';
+
+const CiciSync: React.FC<{ view: ViewState; setView: (v: ViewState) => void }> = ({ view, setView }) => {
+  const { setPageContext, setOnNavigate } = useCici();
+  useEffect(() => {
+    setPageContext(prev => ({ ...prev, menu: view }));
+  }, [view, setPageContext]);
+
+  useEffect(() => {
+    setOnNavigate((targetView: string) => {
+      setView(targetView as ViewState);
+    });
+  }, [setOnNavigate, setView]);
+
+  return null;
+};
 
 
 interface ErrorBoundaryProps {
@@ -600,15 +618,17 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 select-none">
-      <DevToolsBlockedBanner isOpen={showDevToolsBanner} onDismiss={() => setShowDevToolsBanner(false)} />
-      <SessionTimeoutModal 
-        isOpen={showWarning} 
-        remainingSeconds={remainingSeconds} 
-        onExtendSession={extendSession} 
-        onLogout={handleSessionTimeout} 
-      />
-      <Sidebar view={view} setView={setView} onCreateNew={handleCreateNew} userData={userData} />
+    <CiciProvider userRole={userData?.role} initialBAs={bas}>
+      <CiciSync view={view} setView={setView} />
+      <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 select-none">
+        <DevToolsBlockedBanner isOpen={showDevToolsBanner} onDismiss={() => setShowDevToolsBanner(false)} />
+        <SessionTimeoutModal 
+          isOpen={showWarning} 
+          remainingSeconds={remainingSeconds} 
+          onExtendSession={extendSession} 
+          onLogout={handleSessionTimeout} 
+        />
+        <Sidebar view={view} setView={setView} onCreateNew={handleCreateNew} userData={userData} />
       
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <ErrorBoundary>
@@ -699,8 +719,8 @@ export default function App() {
           <AssuranceView />
         )}
 
-        {view === 'ai-assistant' && (
-          <AIAssistantView />
+        {view === 'cici' && (
+          <CiciFullView />
         )}
 
         {view === 'intelligence' && (
@@ -770,6 +790,9 @@ export default function App() {
         </div>
       </ErrorBoundary>
       </main>
-    </div>
+      <CiciDrawer />
+      <CiciFloatingButton />
+      </div>
+    </CiciProvider>
   );
 }

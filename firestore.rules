@@ -12,7 +12,24 @@ service cloud.firestore {
     }
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow create: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow update: if isSignedIn() && (
+        isSuperAdmin() ||
+        (
+          request.auth.uid == userId &&
+          // Cannot self-elevate role
+          (!('role' in request.resource.data) || request.resource.data.role == resource.data.get('role', 'Viewer')) &&
+          // User cannot reset or alter MFA credentials once enabled; only Super Admin can reset
+          (
+            resource.data.get('mfaEnabled', false) != true ||
+            (
+              request.resource.data.get('mfaEnabled', false) == true &&
+              request.resource.data.get('mfaSecret', '') == resource.data.get('mfaSecret', '')
+            )
+          )
+        )
+      );
+      allow delete: if isSuperAdmin();
     }
     match /deleted_users/{document=**} {
       allow read, write: if isSuperAdmin();
@@ -56,6 +73,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if true;
       allow update, delete: if isSuperAdmin();
+    }
+    match /cici_users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+      match /{sub=**} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
     }
   }
 }

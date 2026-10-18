@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useControllerData } from '../hooks/useControllerData';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '../lib/firebase';
-import { AlertCircle, Clock, Plus, Ticket as TicketIcon, Search, Loader2, CheckCircle2, Server, Activity, Database, CloudOff } from 'lucide-react';
+import { AlertCircle, Clock, Plus, Ticket as TicketIcon, Search, Loader2, CheckCircle2, Server, Activity, Database, CloudOff, Sparkles } from 'lucide-react';
+import { useCici } from '../cici/context/CiciContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -64,6 +65,7 @@ interface AssuranceTicket {
 }
 
 export default function TicketView() {
+  const { askCici } = useCici();
   const { data, loading, error } = useControllerData();
 
   const [assuranceTickets, setAssuranceTickets] = useState<AssuranceTicket[]>([]);
@@ -314,6 +316,20 @@ export default function TicketView() {
                         </ul>
                       </div>
                     )}
+                    <div className="mt-3 pt-2 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => askCici(`Analisis tiket proaktif untuk ${device.name || device.id}`, {
+                          menu: 'ticket',
+                          selectedItemType: 'ticket',
+                          selectedItemId: device.id,
+                          selectedItemData: device,
+                        })}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Tanya Cici</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -363,6 +379,18 @@ export default function TicketView() {
                         {device.downSince && (
                           <p className="text-xs text-slate-400 mt-1.5">{device.downSince}</p>
                         )}
+                        <button
+                          onClick={() => askCici(`Kenapa ${device.name || device.id} down lebih dari 24 jam?`, {
+                            menu: 'ticket',
+                            selectedItemType: 'ticket',
+                            selectedItemId: device.id,
+                            selectedItemData: device,
+                          })}
+                          className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Tanya Cici</span>
+                        </button>
                       </div>
                     </div>
                   </div>

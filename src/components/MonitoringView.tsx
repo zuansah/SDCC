@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from '../lib/firebase';
-import { Search, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCw, AlertTriangle, Sparkles } from 'lucide-react';
+import { useCici } from '../cici/context/CiciContext';
 
 export interface Edge {
   serial: string;
@@ -60,6 +61,7 @@ const HEALTH_ORDER = {
 };
 
 export default function MonitoringView() {
+  const { askCici } = useCici();
   const [edges, setEdges] = useState<Edge[] | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,7 +115,7 @@ export default function MonitoringView() {
           setLoading(false);
         } catch (err) {
           console.error(err);
-          setError("Monitoring data unavailable — map.json could not be loaded. The map is intentionally blank rather than showing placeholder data.");
+          setError("Monitoring data unavailable: map.json could not be loaded. The map is intentionally blank rather than showing placeholder data.");
           setLoading(false);
         }
       } else {
@@ -421,6 +423,21 @@ export default function MonitoringView() {
                       <div className="text-[10px] text-slate-400">
                         Location from {edge.geoSource === 'Controller GPS' ? 'controller GPS' : 'address enrichment'}
                       </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => askCici(edge.health === 'DOWN' || edge.health === 'LONG DOWN' ? 'Kenapa ini down?' : 'Ringkas perangkat ini', {
+                          menu: 'monitoring',
+                          selectedItemType: 'device',
+                          selectedItemId: edge.serial,
+                          selectedItemData: edge,
+                        })}
+                        className="w-full py-1 px-2.5 rounded bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
+                        <span>Tanya Cici</span>
+                      </button>
                     </div>
                   </div>
                 </Popup>

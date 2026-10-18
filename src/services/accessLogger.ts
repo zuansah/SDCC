@@ -21,7 +21,8 @@ export type AccessActionType =
   | 'DEVTOOLS_BLOCKED'
   | 'FORCE_TERMINATED'
   | 'USER_CREATED'
-  | 'USER_DELETED';
+  | 'USER_DELETED'
+  | 'MFA_RESET';
 
 export interface AccessLogItem {
   id?: string;

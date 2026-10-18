@@ -40,8 +40,9 @@ export default function Login({ onMfaVerified }: LoginProps) {
       const userDoc = await getDoc(userDocRef);
       const uData = userDoc.exists() ? userDoc.data() : null;
 
-      // If user has MFA enabled AND has a valid secret, go to verify step
-      if (uData?.mfaEnabled && uData?.mfaSecret && !forceNew) {
+      // If user has MFA enabled AND has a valid secret, user MUST verify.
+      // Users cannot reset or re-register MFA themselves; only Super Admin can reset it.
+      if (uData?.mfaEnabled && uData?.mfaSecret) {
         setMfaSecret(uData.mfaSecret);
         setStep('mfa-verify');
         return;
@@ -411,31 +412,27 @@ export default function Login({ onMfaVerified }: LoginProps) {
               {loading ? 'Verifying Code...' : 'Verify Code'}
             </button>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  const u = auth.currentUser || currentUser;
-                  if (u) {
-                    setError('');
-                    setMfaCode('');
-                    handleUserMfaCheck(u, true);
-                  }
-                }}
-                className="text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer font-medium transition"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Re-register / Reset MFA</span>
-              </button>
+            <div className="pt-2 border-t border-slate-100 space-y-3">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-700 mb-0.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Lost Authenticator Device?</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  For enterprise security, MFA can only be reset or re-registered by a <strong>Super Admin</strong>. Please contact your system administrator to reset your MFA credentials.
+                </p>
+              </div>
 
-              <button
-                type="button"
-                onClick={handleBackToLogin}
-                className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Sign In</span>
-              </button>
+              <div className="flex items-center justify-center text-xs">
+                <button
+                  type="button"
+                  onClick={handleBackToLogin}
+                  className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition py-1"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Sign In</span>
+                </button>
+              </div>
             </div>
           </form>
         )}

@@ -11,6 +11,7 @@ import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { logAccessEvent, endUserSession } from '../services/accessLogger';
+import { CiciAvatar } from '../cici/components/CiciAvatar';
 
 interface SidebarProps {
   view: ViewState;
@@ -30,7 +31,7 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
   const isAllowed = (viewId: string) => {
     if (!userData) return true;
     if (userData.role === 'Super Admin') return true;
-    if (viewId === 'label' || viewId === 'task-todo' || viewId === 'ai-assistant' || viewId === 'intelligence') return true;
+    if (viewId === 'label' || viewId === 'task-todo' || viewId === 'intelligence' || viewId === 'cici') return true;
     return userData.allowedViews?.includes(viewId);
   };
 
@@ -87,6 +88,30 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
           <LayoutDashboard className="w-5 h-5" />
           Overview
         </button>}
+
+        {/* Top-Level Cici Agent Entry */}
+        {isAllowed('cici') && (
+          <button
+            onClick={() => setView('cici')}
+            className={cn(
+              "w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              view === 'cici'
+                ? "bg-slate-900 text-white shadow-xs" 
+                : "text-slate-700 hover:bg-slate-100"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <CiciAvatar size="xs" />
+              <span className="font-semibold">Cici</span>
+            </div>
+            <span className={cn(
+              "text-[10px] font-semibold uppercase tracking-wider",
+              view === 'cici' ? "text-slate-300" : "text-slate-400"
+            )}>
+              Agent
+            </span>
+          </button>
+        )}
         
         {/* Fulfillment Dropdown */}
         {['projects', 'project_management', 'orders', 'tracking'].some(id => isAllowed(id)) && (
@@ -130,7 +155,7 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
         )}
 
         {/* Operation Dropdown */}
-        {['monitoring', 'ticket', 'assurance', 'controller', 'license', 'intelligence', 'ai-assistant'].some(id => isAllowed(id)) && (
+        {['monitoring', 'ticket', 'assurance', 'controller', 'license', 'intelligence'].some(id => isAllowed(id)) && (
         <div>
           <button
             onClick={() => toggleMenu('operation')}
@@ -152,7 +177,6 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
                 { id: 'controller', label: 'Controller', icon: Cpu },
                 { id: 'license', label: 'License', icon: Key },
                 { id: 'intelligence', label: 'Intelligence', icon: Brain },
-                { id: 'ai-assistant', label: 'AI Assistant', icon: Sparkles },
               ].filter(item => isAllowed(item.id)).map((item) => (
                 <button
                   key={item.id}

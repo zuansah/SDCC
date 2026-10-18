@@ -1,5 +1,6 @@
 export interface BAData {
   id: string;
+  baNumber?: string;
   userId?: string;
   createdAt: string;
   startedAt?: string;

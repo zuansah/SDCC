@@ -4,6 +4,7 @@ import { ArrowLeft, Printer, Edit2, MapPin, AlertTriangle, Download, Loader2, Ch
 import { auth } from '../lib/firebase';
 import { exportBaReportToPdf } from '../utils/pdfExport';
 import { EvidenceImage, preloadBAEvidence } from '../services/evidenceStorage';
+import { useCici } from '../cici/context/CiciContext';
 
 interface BAPreviewProps {
   ba: BAData;
@@ -170,6 +171,7 @@ function Page789Layout({ title, pageNum, images }: Page789LayoutProps) {
 }
 
 export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
+  const { askCici } = useCici();
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number } | null>(null);
 
@@ -255,6 +257,18 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => askCici(`Periksa kelengkapan bukti foto Berita Acara ${ba.baNumber || ba.id}`, {
+              menu: 'projects',
+              selectedItemType: 'ba',
+              selectedItemId: ba.baNumber || ba.id,
+              selectedItemData: ba,
+            })}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md shadow-xs hover:bg-indigo-100 transition cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-600" />
+            <span>Tanya Cici</span>
+          </button>
           <button
             onClick={onEdit}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"

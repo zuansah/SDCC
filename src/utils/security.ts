@@ -215,6 +215,8 @@ export function initCompleteClipboardLockdown(onBlocked?: (action: string) => vo
 
   // Block keyboard shortcuts: F12, Ctrl/Cmd + Shift + I/J/C, Ctrl/Cmd + U, C, V, X, A, S
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (!e) return;
+
     // Block F12 (Inspect)
     if (e.key === 'F12' || e.keyCode === 123) {
       e.preventDefault();
@@ -223,9 +225,11 @@ export function initCompleteClipboardLockdown(onBlocked?: (action: string) => vo
       return;
     }
 
-    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-    const isShift = e.shiftKey;
-    const isAlt = e.altKey;
+    if (!e.key) return;
+
+    const isCtrlOrCmd = Boolean(e.ctrlKey || e.metaKey);
+    const isShift = Boolean(e.shiftKey);
+    const isAlt = Boolean(e.altKey);
     const key = e.key.toLowerCase();
 
     // Block Inspect shortcut combinations:

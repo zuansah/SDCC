@@ -559,8 +559,8 @@ function DeviceList({ type, devices, kind }: { type: TileKey, devices: Device[],
                 <>
                   <td className="px-4 py-3 text-rose-600 font-medium">{d.downFor || '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{d.lastContact || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate" title={d.before || 'not observed — first seen already down'}>
-                    {d.before || <span className="italic text-slate-400">not observed — first seen already down</span>}
+                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate" title={d.before || 'not observed (first seen already down)'}>
+                    {d.before || <span className="italic text-slate-400">not observed (first seen already down)</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{d.site || '—'}</td>
                 </>
