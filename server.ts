@@ -46,7 +46,7 @@ app.post('/api/ai-assistant/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const modelToUse = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const modelToUse = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
     const responseStream = await ai.models.generateContentStream({
       model: modelToUse,
@@ -77,11 +77,13 @@ app.post('/api/ai-assistant/chat', async (req, res) => {
   }
 });
 
-// Cici Agent multi-step loop step endpoint
+// Cici Agent multi-step loop step endpoint with automatic multi-model quota failover
 app.post('/api/cici/chat-step', async (req, res) => {
   try {
     const { contents, systemInstruction, tools, model } = req.body;
-    const modelToUse = model || 'gemini-2.5-flash';
+    const requestedModel = model || 'gemini-3.8-flash';
+    const candidateModels = [requestedModel, 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    const uniqueModels = Array.from(new Set(candidateModels));
 
     const config: any = {
       systemInstruction: systemInstruction || 'You are Cici, the AI agent of NSM.',
@@ -92,11 +94,26 @@ app.post('/api/cici/chat-step', async (req, res) => {
       config.tools = [{ functionDeclarations: tools }];
     }
 
-    const response = await ai.models.generateContent({
-      model: modelToUse,
-      contents,
-      config,
-    });
+    let lastError: any = null;
+    let response: any = null;
+
+    for (const m of uniqueModels) {
+      try {
+        response = await ai.models.generateContent({
+          model: m,
+          contents,
+          config,
+        });
+        if (response) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${m} encountered issue, attempting next fallback model:`, err?.message || err);
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('All model endpoints exhausted');
+    }
 
     res.json({
       candidate: response.candidates?.[0],
@@ -109,7 +126,7 @@ app.post('/api/cici/chat-step', async (req, res) => {
   }
 });
 
-// Cici Document Writer endpoint using Pro model
+// Cici Document Writer endpoint with resilient model fallbacks
 app.post('/api/cici/write-document', async (req, res) => {
   try {
     const { title, kind, instructions, sources, gatheredData } = req.body;
@@ -131,27 +148,29 @@ ${(sources || ['NSM Controller Telemetry', 'Asset Inventory Feed', 'Intelligence
 `;
 
     let generatedText = '';
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: docPrompt,
-        config: {
-          systemInstruction: 'You are Cici, writing high-grade operational Markdown documentation for Telkom Indonesia operations.',
-          temperature: 0.2,
-        },
-      });
-      generatedText = response.text || '';
-    } catch (proErr: any) {
-      console.warn('Pro model failed or throttled, falling back to Flash for document generation:', proErr?.message);
-      const fallbackResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: docPrompt,
-        config: {
-          systemInstruction: 'You are Cici, writing high-grade operational Markdown documentation for Telkom Indonesia operations.',
-          temperature: 0.2,
-        },
-      });
-      generatedText = fallbackResponse.text || '';
+    const docModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+
+    for (const m of docModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: m,
+          contents: docPrompt,
+          config: {
+            systemInstruction: 'You are Cici, writing high-grade operational Markdown documentation for Telkom Indonesia operations.',
+            temperature: 0.2,
+          },
+        });
+        if (response?.text) {
+          generatedText = response.text;
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`Doc model ${m} failed, trying next fallback:`, err?.message || err);
+      }
+    }
+
+    if (!generatedText) {
+      throw new Error('Document generation failed across all available models');
     }
 
     res.json({ markdown: generatedText });

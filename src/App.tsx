@@ -618,7 +618,7 @@ export default function App() {
   }
 
   return (
-    <CiciProvider userRole={userData?.role} initialBAs={bas}>
+    <CiciProvider userRole={userData?.role} userAllowedViews={userData?.allowedViews} initialBAs={bas}>
       <CiciSync view={view} setView={setView} />
       <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900 select-none">
         <DevToolsBlockedBanner isOpen={showDevToolsBanner} onDismiss={() => setShowDevToolsBanner(false)} />

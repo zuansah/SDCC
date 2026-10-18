@@ -89,29 +89,27 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
           Overview
         </button>}
 
-        {/* Top-Level Cici Agent Entry */}
-        {isAllowed('cici') && (
-          <button
-            onClick={() => setView('cici')}
-            className={cn(
-              "w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              view === 'cici'
-                ? "bg-slate-900 text-white shadow-xs" 
-                : "text-slate-700 hover:bg-slate-100"
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <CiciAvatar size="xs" />
-              <span className="font-semibold">Cici</span>
-            </div>
-            <span className={cn(
-              "text-[10px] font-semibold uppercase tracking-wider",
-              view === 'cici' ? "text-slate-300" : "text-slate-400"
-            )}>
-              Agent
-            </span>
-          </button>
-        )}
+        {/* Top-Level Cici Agent Entry - Available to all users */}
+        <button
+          onClick={() => setView('cici')}
+          className={cn(
+            "w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer",
+            view === 'cici'
+              ? "bg-slate-900 text-white shadow-xs" 
+              : "text-slate-700 hover:bg-slate-100"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <CiciAvatar size="xs" />
+            <span className="font-semibold">Cici</span>
+          </div>
+          <span className={cn(
+            "text-[10px] font-semibold uppercase tracking-wider",
+            view === 'cici' ? "text-slate-300" : "text-slate-400"
+          )}>
+            Agent
+          </span>
+        </button>
         
         {/* Fulfillment Dropdown */}
         {['projects', 'project_management', 'orders', 'tracking'].some(id => isAllowed(id)) && (

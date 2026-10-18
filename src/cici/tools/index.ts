@@ -147,7 +147,12 @@ export async function executeTool(name: string, args: any, context: ToolExecutio
     if (role !== 'Super Admin') {
       const isPermitted = requiredViews.some(v => allowed.includes(v));
       if (!isPermitted) {
-        return { error: 'not permitted' };
+        return { 
+          error: 'ACCESS_DENIED',
+          message: `Akses ditolak: Operasi '${name}' memerlukan hak akses ke modul [${requiredViews.join(', ')}]. Peran Anda saat ini (${role}) tidak memiliki izin akses tersebut.`,
+          requiredViews,
+          userRole: role,
+        };
       }
     }
   }

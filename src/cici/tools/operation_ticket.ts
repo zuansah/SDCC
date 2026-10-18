@@ -188,6 +188,13 @@ export const handlers = {
   },
 
   propose_assurance_ticket: async (args: any, context: ToolExecutionContext) => {
+    if (context.currentUser?.role === 'Viewer') {
+      return {
+        error: 'ACCESS_DENIED',
+        message: 'Akses ditolak: Peran Viewer hanya memiliki hak baca (read-only) dan tidak diizinkan membuat tiket operasional.',
+      };
+    }
+
     const cardId = context.proposeAction({
       type: 'assurance_ticket',
       title: `Create Assurance Ticket: ${args.siteName}`,
@@ -211,6 +218,13 @@ export const handlers = {
   },
 
   propose_close_assurance_ticket: async (args: any, context: ToolExecutionContext) => {
+    if (context.currentUser?.role === 'Viewer') {
+      return {
+        error: 'ACCESS_DENIED',
+        message: 'Akses ditolak: Peran Viewer hanya memiliki hak baca (read-only) dan tidak diizinkan menutup atau mengubah tiket operasional.',
+      };
+    }
+
     const cardId = context.proposeAction({
       type: 'close_assurance_ticket',
       title: `Resolve Assurance Ticket: ${args.ticketId}`,

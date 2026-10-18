@@ -71,9 +71,15 @@ interface CiciContextValue {
 
 const CiciContext = createContext<CiciContextValue | undefined>(undefined);
 
-export const CiciProvider: React.FC<{ children: React.ReactNode; userRole?: string; initialBAs?: any[] }> = ({
+export const CiciProvider: React.FC<{ 
+  children: React.ReactNode; 
+  userRole?: string; 
+  userAllowedViews?: string[];
+  initialBAs?: any[];
+}> = ({
   children,
   userRole,
+  userAllowedViews,
   initialBAs = [],
 }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -263,10 +269,16 @@ export const CiciProvider: React.FC<{ children: React.ReactNode; userRole?: stri
         getCiciUserProfile(uid),
       ]);
 
+      const allowedViewsList = userRole === 'Super Admin'
+        ? 'ALL_MODULES (Full Super Admin Access)'
+        : ((userAllowedViews && userAllowedViews.length > 0)
+            ? userAllowedViews.join(', ')
+            : 'dashboard, monitoring, ticket');
+
       const userProfileText = `UID: ${uid}
 Email: ${auth.currentUser?.email || 'unknown'}
 Role: ${userRole || profile.role || 'Operator'}
-Allowed Views: ${userRole === 'Super Admin' ? 'ALL' : 'Standard'}
+Allowed Views: ${allowedViewsList}
 Language: ${profile.language || 'id'}
 Memory Storage: ${profile.memoryEnabled === false ? 'DISABLED BY USER' : 'ENABLED'}`;
 
@@ -276,6 +288,9 @@ Memory Storage: ${profile.memoryEnabled === false ? 'DISABLED BY USER' : 'ENABLE
           uid,
           email: auth.currentUser?.email || '',
           role: userRole || 'Operator',
+          allowedViews: userRole === 'Super Admin'
+            ? ['dashboard', 'projects', 'project_management', 'orders', 'tracking', 'monitoring', 'controller', 'ticket', 'assurance', 'intelligence', 'license', 'inventory', 'tracing', 'label', 'mass-testing-uat', 'open-sdwan', 'automation', 'api', 'admin-users']
+            : (userAllowedViews || ['dashboard', 'projects', 'project_management', 'monitoring', 'ticket']),
         },
         pageContext: effectivePageContext,
         sharedData: {
@@ -362,7 +377,7 @@ Memory Storage: ${profile.memoryEnabled === false ? 'DISABLED BY USER' : 'ENABLE
       setToolActivity(null);
       abortControllerRef.current = null;
     }
-  }, [isRunning, pageContext, messages, userRole, controllerPayload, inventoryPayload, ordersPayload, assurancePayload, intelligencePayload, initialBAs, refreshMemories, refreshDocuments, refreshReminders]);
+  }, [isRunning, pageContext, messages, userRole, userAllowedViews, controllerPayload, inventoryPayload, ordersPayload, assurancePayload, intelligencePayload, initialBAs, refreshMemories, refreshDocuments, refreshReminders]);
 
   const askCici = useCallback((prompt: string, contextOverride?: Partial<PageContext>) => {
     setIsDrawerOpen(true);
