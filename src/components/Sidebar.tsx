@@ -4,7 +4,8 @@ import {
   LayoutDashboard, FileText, Settings, LogOut, Shield,
   List, Package, ShoppingCart, ChevronDown, ChevronRight, 
   MapPin, Activity, Ticket, ShieldCheck, Cpu, Key, Layers, CheckCircle, Tag, CheckSquare,
-  Home, Wrench, Radio, Search, Truck, Briefcase, Database, Monitor, FlaskConical, Network, Webhook, Cog
+  Home, Wrench, Radio, Search, Truck, Briefcase, Database, Monitor, FlaskConical, Network, Webhook, Cog,
+  Sparkles, Brain
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
@@ -29,7 +30,7 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
   const isAllowed = (viewId: string) => {
     if (!userData) return true;
     if (userData.role === 'Super Admin') return true;
-    if (viewId === 'label' || viewId === 'task-todo') return true;
+    if (viewId === 'label' || viewId === 'task-todo' || viewId === 'ai-assistant' || viewId === 'intelligence') return true;
     return userData.allowedViews?.includes(viewId);
   };
 
@@ -129,7 +130,7 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
         )}
 
         {/* Operation Dropdown */}
-        {['monitoring', 'ticket', 'assurance', 'controller', 'license'].some(id => isAllowed(id)) && (
+        {['monitoring', 'ticket', 'assurance', 'controller', 'license', 'intelligence', 'ai-assistant'].some(id => isAllowed(id)) && (
         <div>
           <button
             onClick={() => toggleMenu('operation')}
@@ -150,6 +151,8 @@ export default function Sidebar({ view, setView, onCreateNew, userData }: Sideba
                 { id: 'assurance', label: 'SD-WAN Assurance', icon: ShieldCheck },
                 { id: 'controller', label: 'Controller', icon: Cpu },
                 { id: 'license', label: 'License', icon: Key },
+                { id: 'intelligence', label: 'Intelligence', icon: Brain },
+                { id: 'ai-assistant', label: 'AI Assistant', icon: Sparkles },
               ].filter(item => isAllowed(item.id)).map((item) => (
                 <button
                   key={item.id}

@@ -19,6 +19,60 @@ export function downloadSvgFile(svgString: string, filename: string) {
 }
 
 /**
+ * Safely renders an HTMLElement to canvas using html2canvas-pro.
+ * If html2canvas fails with "Unable to find element in cloned iframe" or similar DOM tree issues,
+ * it falls back to mounting a pristine clone directly to document.body, rendering it, and cleaning up.
+ */
+async function renderElementToCanvasSafe(
+  element: HTMLElement,
+  scale: number = 2
+): Promise<HTMLCanvasElement> {
+  const html2canvasOptions = {
+    scale,
+    backgroundColor: '#ffffff',
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+    ignoreElements: (el: Element) =>
+      el.tagName === 'IFRAME' ||
+      el.getAttribute('data-html2canvas-ignore') === 'true',
+  };
+
+  try {
+    return await html2canvas(element, html2canvasOptions);
+  } catch (err: any) {
+    console.warn('Direct html2canvas capture failed, attempting isolated staging fallback:', err);
+
+    // Create an isolated staging container directly attached to document.body
+    const staging = document.createElement('div');
+    staging.style.position = 'fixed';
+    staging.style.left = '-10000px';
+    staging.style.top = '0';
+    staging.style.width = element.offsetWidth ? `${element.offsetWidth}px` : '297mm';
+    staging.style.height = element.offsetHeight ? `${element.offsetHeight}px` : '210mm';
+    staging.style.overflow = 'hidden';
+    staging.style.backgroundColor = '#ffffff';
+    staging.style.zIndex = '-9999';
+
+    // Clone element and strip iframes to prevent cross-origin issues
+    const cloned = element.cloneNode(true) as HTMLElement;
+    cloned.querySelectorAll('iframe').forEach((ifr) => ifr.remove());
+    staging.appendChild(cloned);
+    document.body.appendChild(staging);
+
+    try {
+      return await html2canvas(cloned, html2canvasOptions);
+    } finally {
+      if (staging.parentNode) {
+        staging.parentNode.removeChild(staging);
+      }
+    }
+  }
+}
+
+/**
  * Captures any DOM element (e.g. Physical Sticker) as a high-res PNG and triggers download
  */
 export async function downloadElementAsPng(
@@ -26,13 +80,7 @@ export async function downloadElementAsPng(
   filename: string,
   scale: number = 3
 ): Promise<void> {
-  const canvas = await html2canvas(element, {
-    scale,
-    backgroundColor: '#ffffff',
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-  });
+  const canvas = await renderElementToCanvasSafe(element, scale);
 
   const dataUrl = canvas.toDataURL('image/png');
   const link = document.createElement('a');
@@ -69,13 +117,7 @@ export async function exportStickerSheetsToPdf(
     }
 
     const sheet = sheetElements[i];
-    const canvas = await html2canvas(sheet, {
-      scale: 2, // 2x gives 300+ DPI equivalent for sharp barcodes/QRs
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-    });
+    const canvas = await renderElementToCanvasSafe(sheet, 2);
 
     const imgData = canvas.toDataURL('image/jpeg', 0.96);
 
@@ -98,9 +140,25 @@ export async function exportBaReportToPdf(
   filename: string = 'BA_Report.pdf',
   onProgress?: (current: number, total: number) => void
 ): Promise<void> {
-  if (!pageElements || pageElements.length === 0) {
+  const total = pageElements.length;
+  if (total === 0) {
     throw new Error('No BA report pages found to export.');
   }
+
+  // Pre-wait to ensure images inside pages are ready
+  try {
+    const images = Array.from(document.querySelectorAll<HTMLImageElement>('.ba-report-page img'));
+    await Promise.all(
+      images.map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          setTimeout(resolve, 2000); // 2s max wait per image
+        });
+      })
+    );
+  } catch (_) {}
 
   const pdf = new jsPDF({
     orientation: 'landscape',
@@ -108,22 +166,20 @@ export async function exportBaReportToPdf(
     format: 'a4',
   });
 
-  const total = pageElements.length;
-
   for (let i = 0; i < total; i++) {
     if (onProgress) {
       onProgress(i + 1, total);
     }
 
-    const page = pageElements[i];
-    const canvas = await html2canvas(page, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      ignoreElements: (el) => el.tagName === 'IFRAME',
-    });
+    // Always fetch the live attached DOM element to avoid any detached element issues
+    const livePages = Array.from(document.querySelectorAll<HTMLElement>('.ba-report-page'));
+    const page = (livePages[i] && livePages[i].isConnected) ? livePages[i] : pageElements[i];
+
+    if (!page) {
+      throw new Error(`Page ${i + 1} could not be found.`);
+    }
+
+    const canvas = await renderElementToCanvasSafe(page, 2);
 
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
 

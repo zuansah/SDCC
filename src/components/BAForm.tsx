@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { BAData } from '../types';
+import { BAData, EvidenceCheckVerdict } from '../types';
 import { generateId, fileToBase64, fileToBase64WithGeotag, formatDate } from '../lib/utils';
-import { Save, X, UploadCloud, Image as ImageIcon, MapPin, QrCode } from 'lucide-react';
+import { 
+  Save, X, UploadCloud, Image as ImageIcon, MapPin, QrCode, 
+  CheckCircle2, AlertTriangle, Loader2, Sparkles, ShieldCheck 
+} from 'lucide-react';
 import QRScanner from './QRScanner';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { processAndUploadEvidencePhotos, EvidenceImage } from '../services/evidenceStorage';
+import { verifyEvidencePhoto } from '../services/aiEvidenceService';
+import { useInventoryData } from '../hooks/useInventoryData';
 
 interface BAFormProps {
   key?: string | number;
@@ -28,6 +33,7 @@ const defaultData: Partial<BAData> = {
   coordinator: '',
   installLocation: '',
   deviceType: '',
+  evidenceChecks: {},
 };
 
 export default function BAForm({ initialData, onSave, onCancel, isTechnician }: BAFormProps) {
@@ -39,6 +45,10 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
   const [geoLoading, setGeoLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
+  const [verifyingFields, setVerifyingFields] = useState<Record<string, boolean>>({});
+
+  const { data: inventoryPayload } = useInventoryData();
+  const inventoryAssets = inventoryPayload?.assets || null;
 
   
   const handleScan = async (decodedText: string) => {
@@ -104,10 +114,41 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
         // Convert to base64 with Watermark (Geotag)
         const base64 = await fileToBase64WithGeotag(file, geoText, timeText);
         setFormData((prev) => ({ ...prev, [fieldName]: base64 }));
+        setGeoLoading(false);
+
+        // Run Gemini Vision AI verification in the background (Advisory, not blocking)
+        setVerifyingFields((prev) => ({ ...prev, [fieldName as string]: true }));
+        try {
+          const verdict = await verifyEvidencePhoto(
+            fieldName as string,
+            base64,
+            formData.serialNumber,
+            inventoryAssets
+          );
+
+          setFormData((prev) => {
+            const nextChecks = { ...(prev.evidenceChecks || {}), [fieldName as string]: verdict };
+            const updatedForm: Partial<BAData> = {
+              ...prev,
+              evidenceChecks: nextChecks,
+            };
+
+            // If serial was extracted from snSdwanImg or snOntImg and form doesn't have one yet, autofill
+            const extractedSerial = verdict.extracted?.serialNumber;
+            if ((fieldName === 'snSdwanImg' || fieldName === 'snOntImg') && extractedSerial && !prev.serialNumber) {
+              updatedForm.serialNumber = extractedSerial;
+            }
+            return updatedForm;
+          });
+        } catch (vErr) {
+          console.warn("Evidence photo AI verification failed:", vErr);
+        } finally {
+          setVerifyingFields((prev) => ({ ...prev, [fieldName as string]: false }));
+        }
+
       } catch (err) {
         console.error("Error converting image", err);
         alert("Failed to read image file.");
-      } finally {
         setGeoLoading(false);
       }
     }
@@ -228,33 +269,104 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
     </div>
   );
 
-  const renderImageUploadGroup = (label: string, name: keyof BAData, allowGallery = false) => (
-    <div key={name} className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
-      <div className="h-40 border-2 border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors relative overflow-hidden group">
-        {formData[name] ? (
-          <div className="absolute inset-0">
-            <EvidenceImage src={formData[name] as string} alt={label} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <span className="text-white text-sm font-medium">Click to change</span>
+  const renderImageUploadGroup = (label: string, name: keyof BAData, allowGallery = false) => {
+    const isChecking = verifyingFields[name as string];
+    const verdict = formData.evidenceChecks?.[name as string];
+
+    return (
+      <div key={name} className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-slate-700">{label}</span>
+          {isChecking && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 animate-pulse">
+              <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+              <span>AI checking photo...</span>
+            </span>
+          )}
+          {!isChecking && verdict && (verdict.status === 'verified' || (verdict.ok && (!verdict.issues || verdict.issues.length === 0))) && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>AI Verified</span>
+            </span>
+          )}
+          {!isChecking && verdict && (verdict.status === 'warning' || !verdict.ok) && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>AI Warning</span>
+            </span>
+          )}
+        </div>
+
+        <div className="h-44 border-2 border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors relative overflow-hidden group">
+          {formData[name] ? (
+            <div className="absolute inset-0">
+              <EvidenceImage src={formData[name] as string} alt={label} className="w-full h-full object-cover" />
+
+              {/* Inline AI Status Overlay on Thumbnail */}
+              {isChecking && (
+                <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-900/85 text-white text-[11px] font-medium shadow-md backdrop-blur-xs">
+                  <Loader2 className="w-3 h-3 animate-spin text-indigo-300" />
+                  <span>AI verifying...</span>
+                </div>
+              )}
+
+              {!isChecking && verdict && (verdict.status === 'verified' || (verdict.ok && (!verdict.issues || verdict.issues.length === 0))) && (
+                <div className="absolute top-2 left-2 z-10 max-w-[90%] flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-700/90 text-white text-[11px] font-medium shadow-md backdrop-blur-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                  <span className="truncate">{verdict.verdictText || 'Subject verified'}</span>
+                </div>
+              )}
+
+              {!isChecking && verdict && (verdict.status === 'warning' || !verdict.ok) && (
+                <div className="absolute top-2 left-2 right-2 z-10 flex items-start gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-600/95 text-white text-[11px] font-semibold shadow-md backdrop-blur-xs leading-tight">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-200 shrink-0 mt-0.5" />
+                  <span className="line-clamp-2">{verdict.issues?.[0] || verdict.verdictText || 'Serial not legible — retake'}</span>
+                </div>
+              )}
+
+              {/* Hover overlay to replace photo */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-15">
+                <span className="text-white text-xs font-semibold bg-black/60 px-3 py-1.5 rounded-md">Click to change photo</span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="text-center">
-            <ImageIcon className="mx-auto h-8 w-8 text-slate-400 mb-2" />
-            <span className="text-xs text-slate-500 block">Tap to upload</span>
+          ) : (
+            <div className="text-center">
+              <ImageIcon className="mx-auto h-8 w-8 text-slate-400 mb-2" />
+              <span className="text-xs text-slate-500 block">Tap to upload photo</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Automated AI subject check</span>
+            </div>
+          )}
+
+          <input
+            type="file"
+            accept="image/*"
+            {...(!allowGallery ? { capture: "environment" } : {})}
+            onChange={(e) => handleImageUpload(e, name)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+          />
+        </div>
+
+        {/* Advisory Issue / Result text under the thumbnail */}
+        {!isChecking && verdict && (verdict.status === 'warning' || !verdict.ok) && verdict.issues && verdict.issues.length > 0 && (
+          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1 flex items-start gap-1.5">
+            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0 mt-0.5" />
+            <span className="leading-tight">{verdict.issues.join(' • ')} (Advisory only)</span>
           </div>
         )}
-        <input
-          type="file"
-          accept="image/*"
-          {...(!allowGallery ? { capture: "environment" } : {})}
-          onChange={(e) => handleImageUpload(e, name)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
+
+        {!isChecking && verdict && (verdict.status === 'verified' || (verdict.ok && (!verdict.issues || verdict.issues.length === 0))) && verdict.extracted?.serialNumber && (
+          <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+            <span>Extracted Serial: <strong className="font-mono">{verdict.extracted.serialNumber}</strong>{verdict.inventoryVerified ? ' • Verified in inventory' : ''}</span>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const evidenceCheckEntries = Object.entries(formData.evidenceChecks || {});
+  const verifiedCount = evidenceCheckEntries.filter(([_, v]) => v?.status === 'verified' || (v?.ok && (!v?.issues || v.issues.length === 0))).length;
+  const warningCount = evidenceCheckEntries.filter(([_, v]) => v?.status === 'warning' || (v && !v.ok)).length;
 
   return (
     <div className="flex flex-col h-full">
@@ -267,16 +379,27 @@ export default function BAForm({ initialData, onSave, onCancel, isTechnician }: 
           </div>
         </div>
       )}
-      <div className="px-8 py-6 border-b border-slate-200 bg-white sticky top-0 z-20 flex items-center justify-between shadow-sm">
+      <div className="px-8 py-5 border-b border-slate-200 bg-white sticky top-0 z-20 flex items-center justify-between shadow-sm">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">
             {isTechnician ? 'Form Serah Terima Project' : initialData ? 'Edit Berita Acara' : 'Create New Berita Acara'}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 mt-0.5">
             {isTechnician ? 'Please fill out all the evidence required for the project handover.' : 'Fill out the details for the installation report.'}
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {evidenceCheckEntries.length > 0 && (
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-100 text-xs">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="font-medium text-slate-700">AI Verification:</span>
+              <span className="text-emerald-700 font-bold">{verifiedCount} verified</span>
+              {warningCount > 0 && (
+                <span className="text-amber-700 font-bold">• {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}</span>
+              )}
+            </div>
+          )}
+
           {!isTechnician && (
             <button
               type="button"

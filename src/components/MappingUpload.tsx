@@ -13,6 +13,22 @@ export default function MappingUpload() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Constrain file extension: accept only .xlsx, .xls, .csv
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const lowerName = file.name.toLowerCase();
+    const hasValidExt = validExtensions.some(ext => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      setError('Invalid file type. Please upload a valid .xlsx, .xls, or .csv spreadsheet file.');
+      return;
+    }
+
+    // Cap file size to 10MB
+    const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      setError('File size exceeds the 10MB limit.');
+      return;
+    }
+
     setLoading(true);
     setMessage('');
     setError('');
@@ -34,20 +50,38 @@ export default function MappingUpload() {
           throw new Error("Excel file is empty");
         }
 
-        // We assume the excel has a column 'trace_id' or 'Trace ID' or 'id'
-        // and other columns match the BAData fields (e.g., 'projectName', 'siteName')
-        // Let's use a batch to upload
-        
+        // Known allowed fields for BA mappings
+        const ALLOWED_FIELDS = [
+          'projectName', 'siteName', 'siteId', 'siteCode', 'witel', 'regional',
+          'address', 'hostname', 'serialNumber', 'serial', 'ipAddress', 'vendor',
+          'deviceType', 'tenant', 'pengadaan', 'orderNumber', 'sid', 'customer',
+          'campaign', 'location', 'kota'
+        ];
+
         let batch = writeBatch(db);
         let count = 0;
         let totalCount = 0;
         
-        for (const row of json as any[]) {
-          const traceId = row['trace_id'] || row['Trace ID'] || row['TraceID'] || row['id'];
+        for (const rawRow of json as any[]) {
+          if (!rawRow || typeof rawRow !== 'object') continue;
+
+          const traceId = rawRow['trace_id'] || rawRow['Trace ID'] || rawRow['TraceID'] || rawRow['id'];
           if (!traceId) continue; // Skip rows without trace ID
 
-          const docRef = doc(collection(db, 'traceMappings'), String(traceId));
-          batch.set(docRef, row, { merge: true });
+          // Read only expected columns by name; do not spread untrusted row wholesale
+          const sanitizedRow: Record<string, string | number> = {
+            trace_id: String(traceId).trim()
+          };
+
+          for (const field of ALLOWED_FIELDS) {
+            const val = rawRow[field] ?? rawRow[field.toLowerCase()];
+            if (val !== undefined && val !== null && typeof val !== 'object' && typeof val !== 'function') {
+              sanitizedRow[field] = typeof val === 'string' ? val.trim() : val;
+            }
+          }
+
+          const docRef = doc(collection(db, 'traceMappings'), String(traceId).trim());
+          batch.set(docRef, sanitizedRow, { merge: true });
           
           count++;
           totalCount++;

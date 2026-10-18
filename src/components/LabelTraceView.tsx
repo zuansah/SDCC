@@ -819,6 +819,22 @@ export default function LabelTraceView({ user }: LabelTraceViewProps) {
 
   // Pure browser-side parsing using XLSX (never uploaded anywhere!)
   const processIncomingFile = (file: File) => {
+    // Constrain file extension: accept only .xlsx, .xls, .csv
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const lowerName = file.name.toLowerCase();
+    const hasValidExt = validExtensions.some((ext) => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      alert('Format berkas tidak didukung. Harap unggah berkas spreadsheet .xlsx, .xls, atau .csv.');
+      return;
+    }
+
+    // Cap file size (15MB)
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      alert('Ukuran berkas melebihi batas maksimal 15MB.');
+      return;
+    }
+
     setFileName(file.name);
     const reader = new FileReader();
 

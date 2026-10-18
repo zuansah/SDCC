@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { BAData } from './types';
 import Sidebar from './components/Sidebar';
 import ProjectManagementDashboard from './components/ProjectManagementDashboard';
@@ -17,6 +17,8 @@ import OrderStatusView from './components/OrderStatusView';
 import AssuranceView from './components/AssuranceView';
 import LabelTraceView from './components/LabelTraceView';
 import TaskTodoView from './components/TaskTodoView';
+import AIAssistantView from './components/AIAssistantView';
+import IntelligenceView from './components/IntelligenceView';
 import DevToolsBlockedBanner from './components/DevToolsBlockedBanner';
 import GeoRestrictionBlocked from './components/GeoRestrictionBlocked';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
@@ -39,7 +41,7 @@ import { IMAGE_FIELDS, processAndUploadEvidencePhotos } from './services/evidenc
 export type ViewState = 
   | 'dashboard' | 'new-ba' | 'edit-ba' | 'preview-ba' 
   | 'projects' | 'project_management' | 'orders' | 'tracking'
-  | 'monitoring' | 'ticket' | 'assurance' | 'controller' | 'license'
+  | 'monitoring' | 'ticket' | 'assurance' | 'controller' | 'license' | 'ai-assistant' | 'intelligence'
   | 'inventory' | 'tracing' | 'identification' | 'label' | 'task-todo' | 'mass-testing-uat' | 'open-sdwan' | 'automation' | 'api' | 'super_admin' | 'vendor_bas';
 
 
@@ -217,12 +219,28 @@ export default function App() {
   });
 
   // 4. Remote Session Termination Listener (Super Admin force disconnect)
+  const sessionStartTimeRef = useRef<number>(Date.now());
+  useEffect(() => {
+    sessionStartTimeRef.current = Date.now();
+  }, [user?.uid]);
+
   useEffect(() => {
     if (!user || user.isAnonymous) return;
-    const unsub = onSnapshot(doc(db, 'user_sessions', user.uid), (snapshot) => {
+    const unsub = onSnapshot(doc(db, 'user_sessions', user.uid), async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data?.status === 'TERMINATED') {
+          // Verify termination was executed AFTER the current login session started
+          const termTimeStr = data?.terminatedAt || data?.lastActiveAt;
+          const termTime = termTimeStr ? new Date(termTimeStr).getTime() : 0;
+          if (termTime > 0 && termTime < sessionStartTimeRef.current - 2000) {
+            // Stale termination from a past session: clean it up and do not kick out current session
+            try {
+              await deleteDoc(doc(db, 'user_sessions', user.uid));
+            } catch (_) {}
+            return;
+          }
+
           logAccessEvent({
             action: 'FORCE_TERMINATED',
             details: 'Active session was terminated remotely by Super Admin',
@@ -488,10 +506,17 @@ export default function App() {
     return (
       <>
         <DevToolsBlockedBanner isOpen={showDevToolsBanner} onDismiss={() => setShowDevToolsBanner(false)} />
-        <Login onMfaVerified={() => {
+        <Login onMfaVerified={async () => {
           sessionStorage.setItem('mfa_verified', 'true');
           setMfaVerified(true);
           if (auth.currentUser) {
+            try {
+              const uDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+              if (uDoc.exists()) {
+                setUserData(uDoc.data());
+              }
+            } catch (_) {}
+
             logAccessEvent({
               action: 'LOGIN',
               details: 'User authenticated via password + MFA TOTP verification',
@@ -674,6 +699,13 @@ export default function App() {
           <AssuranceView />
         )}
 
+        {view === 'ai-assistant' && (
+          <AIAssistantView />
+        )}
+
+        {view === 'intelligence' && (
+          <IntelligenceView />
+        )}
 
         {view === 'license' && (
           <div className="p-8 w-full flex flex-col items-center justify-center h-full text-slate-500">

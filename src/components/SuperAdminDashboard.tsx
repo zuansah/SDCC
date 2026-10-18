@@ -380,7 +380,10 @@ export default function SuperAdminDashboard() {
     if (confirm(`Reset MFA for ${email}? They will need to scan a new QR code on next login.`)) {
       try {
         await setDoc(doc(db, 'users', uid), { mfaEnabled: false, mfaSecret: '' }, { merge: true });
-        alert('MFA reset successfully!');
+        try {
+          await deleteDoc(doc(db, 'user_sessions', uid));
+        } catch (_) {}
+        alert('MFA reset successfully! The user will be prompted to scan a new QR code on next login.');
       } catch (err: any) {
         alert('Failed to reset MFA: ' + err.message);
       }

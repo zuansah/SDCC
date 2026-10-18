@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { Lock, Mail, AlertCircle, Shield } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Shield, Key, RefreshCw, ArrowLeft, Copy, Check } from 'lucide-react';
 import * as OTPAuth from 'otpauth';
 import { QRCodeSVG } from 'qrcode.react';
 import { authFloodGuard } from '../utils/security';
@@ -25,6 +25,7 @@ export default function Login({ onMfaVerified }: LoginProps) {
   const [mfaSecret, setMfaSecret] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [qrUri, setQrUri] = useState('');
+  const [copiedSecret, setCopiedSecret] = useState(false);
 
   // Auto-check if user is already logged in but needs MFA
   useEffect(() => {
@@ -33,39 +34,57 @@ export default function Login({ onMfaVerified }: LoginProps) {
     }
   }, []);
 
-  const handleUserMfaCheck = async (user: User) => {
+  const handleUserMfaCheck = async (user: User, forceNew = false) => {
     try {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists() || !userDoc.data().mfaEnabled) {
-        // Setup MFA
-        const secret = new OTPAuth.Secret({ size: 20 });
-        const secretBase32 = secret.base32;
-        
-        await setDoc(userDocRef, {
-          email: user.email,
-          mfaSecret: secretBase32,
-          mfaEnabled: false
-        }, { merge: true });
-        
-        const totp = new OTPAuth.TOTP({
-          issuer: 'NSM Dashboard',
-          label: user.email || 'Admin',
-          algorithm: 'SHA1',
-          digits: 6,
-          period: 30,
-          secret: secret
-        });
-        
-        setMfaSecret(secretBase32);
-        setQrUri(totp.toString());
-        setStep('mfa-setup');
-      } else {
-        // Verify MFA
-        setMfaSecret(userDoc.data().mfaSecret);
+      const uData = userDoc.exists() ? userDoc.data() : null;
+
+      // If user has MFA enabled AND has a valid secret, go to verify step
+      if (uData?.mfaEnabled && uData?.mfaSecret && !forceNew) {
+        setMfaSecret(uData.mfaSecret);
         setStep('mfa-verify');
+        return;
       }
+
+      // If user needs MFA setup (or if mfaSecret was reset / empty)
+      // Check if there is already a generated secret in DB that hasn't been enabled yet
+      let secretBase32 = (!forceNew && uData?.mfaSecret && typeof uData.mfaSecret === 'string' && uData.mfaSecret.length > 10)
+        ? uData.mfaSecret
+        : '';
+
+      let secret: OTPAuth.Secret;
+      if (secretBase32) {
+        try {
+          secret = OTPAuth.Secret.fromBase32(secretBase32);
+        } catch {
+          secret = new OTPAuth.Secret({ size: 20 });
+          secretBase32 = secret.base32;
+        }
+      } else {
+        secret = new OTPAuth.Secret({ size: 20 });
+        secretBase32 = secret.base32;
+      }
+
+      // Persist secret and keep mfaEnabled false until verified
+      await setDoc(userDocRef, {
+        email: user.email,
+        mfaSecret: secretBase32,
+        mfaEnabled: false
+      }, { merge: true });
+
+      const totp = new OTPAuth.TOTP({
+        issuer: 'NSM Telkom',
+        label: user.email || 'Admin',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: secret
+      });
+
+      setMfaSecret(secretBase32);
+      setQrUri(totp.toString());
+      setStep('mfa-setup');
     } catch (err: any) {
       console.warn("MFA check failed:", err);
       if (err.code === 'resource-exhausted' || err.code === 'unavailable' || err.message?.includes('Quota limit exceeded') || err.message?.includes('offline')) {
@@ -95,6 +114,12 @@ export default function Login({ onMfaVerified }: LoginProps) {
       // Reset failed attempts on success
       authFloodGuard.recordSuccess(email);
       setCurrentUser(userCred.user);
+
+      // Clean up any stale session termination so user is not immediately force-logged out
+      try {
+        await deleteDoc(doc(db, 'user_sessions', userCred.user.uid));
+      } catch (_) {}
+
       await handleUserMfaCheck(userCred.user);
     } catch (err: any) {
       const failRecord = authFloodGuard.recordFailure(email);
@@ -111,6 +136,18 @@ export default function Login({ onMfaVerified }: LoginProps) {
   const handleMfaVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const cleanCode = mfaCode.trim().replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
+      setError('Please enter a valid 6-digit verification code.');
+      return;
+    }
+
+    if (!mfaSecret) {
+      setError('MFA secret not found. Please click "Re-register MFA" below.');
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -121,28 +158,57 @@ export default function Login({ onMfaVerified }: LoginProps) {
         secret: OTPAuth.Secret.fromBase32(mfaSecret)
       });
       
-      const delta = totp.validate({ token: mfaCode, window: 1 });
+      // window: 2 allows +/- 60s of clock skew tolerance
+      const delta = totp.validate({ token: cleanCode, window: 2 });
       
       if (delta !== null) {
         // Success
-        if (step === 'mfa-setup') {
-          // Mark as enabled in DB
-          const user = auth.currentUser || currentUser;
-          if (user) {
-            await setDoc(doc(db, 'users', user.uid), {
-              mfaEnabled: true
-            }, { merge: true });
-          }
+        const user = auth.currentUser || currentUser;
+        if (!user) {
+          setError('Session expired. Please sign in again.');
+          setStep('credentials');
+          setLoading(false);
+          return;
         }
+
+        // Mark MFA as enabled in DB
+        await setDoc(doc(db, 'users', user.uid), {
+          mfaEnabled: true,
+          mfaSecret: mfaSecret
+        }, { merge: true });
+
+        // Clean up any stale session termination
+        try {
+          await deleteDoc(doc(db, 'user_sessions', user.uid));
+        } catch (_) {}
+
         onMfaVerified?.();
       } else {
-        setError('Invalid authenticator code. Please try again.');
+        setError('Invalid authenticator code. Check that your device time is synchronized and try again.');
       }
     } catch (err: any) {
-      setError('Failed to verify code.');
+      console.error("MFA verification error:", err);
+      setError(err?.message || 'Failed to verify code. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBackToLogin = async () => {
+    try {
+      await auth.signOut();
+    } catch (_) {}
+    setStep('credentials');
+    setMfaCode('');
+    setError('');
+    setCurrentUser(null);
+  };
+
+  const copySecretToClipboard = () => {
+    if (!mfaSecret) return;
+    navigator.clipboard?.writeText(mfaSecret);
+    setCopiedSecret(true);
+    setTimeout(() => setCopiedSecret(false), 2000);
   };
 
   return (
@@ -218,36 +284,92 @@ export default function Login({ onMfaVerified }: LoginProps) {
                 Secure Your Account
               </h2>
               <p className="text-sm text-slate-600 mb-4">
-                Scan this QR code with Google Authenticator or Authy to set up two-factor authentication.
+                Scan this QR code with Google Authenticator or Authy to complete two-factor authentication setup.
               </p>
               
-              <div className="flex justify-center mb-6">
-                <div className="bg-white p-4 border border-slate-200 rounded-xl inline-block">
-                  <QRCodeSVG value={qrUri} size={200} />
+              <div className="flex justify-center mb-4">
+                <div className="bg-white p-4 border border-slate-200 rounded-xl inline-block shadow-sm">
+                  {qrUri ? (
+                    <QRCodeSVG value={qrUri} size={200} />
+                  ) : (
+                    <div className="w-[200px] h-[200px] flex items-center justify-center text-slate-400 text-xs">
+                      Generating QR code...
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {mfaSecret && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 mb-2 text-left">
+                  <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                    <span className="flex items-center gap-1 font-medium text-slate-700">
+                      <Key className="w-3.5 h-3.5 text-blue-600" /> Manual Secret Key
+                    </span>
+                    <button
+                      type="button"
+                      onClick={copySecretToClipboard}
+                      className="text-blue-600 hover:text-blue-700 flex items-center gap-1 font-semibold cursor-pointer"
+                    >
+                      {copiedSecret ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedSecret ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <div className="font-mono text-xs text-slate-800 break-all select-all font-semibold tracking-wider bg-white p-1.5 rounded border border-slate-200 text-center">
+                    {mfaSecret}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1 text-center">Enter 6-digit code</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1 text-center">Enter 6-digit verification code</label>
               <input
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 required
                 maxLength={6}
-                className="w-full text-center tracking-widest text-2xl px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono"
+                autoFocus
+                className="w-full text-center tracking-widest text-2xl px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono font-bold"
                 placeholder="000000"
               />
+              <p className="text-xs text-slate-400 text-center mt-1">
+                Enter the current 6 numbers shown in your authenticator app
+              </p>
             </div>
 
             <button
               type="submit"
-              disabled={loading || mfaCode.length !== 6}
-              className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading || mfaCode.trim().length !== 6}
+              className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {loading ? 'Verifying...' : 'Verify & Continue'}
+              {loading ? 'Verifying & Activating...' : 'Verify & Continue'}
             </button>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  const u = auth.currentUser || currentUser;
+                  if (u) handleUserMfaCheck(u, true);
+                }}
+                className="text-slate-500 hover:text-blue-600 flex items-center gap-1 cursor-pointer transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>New QR Code</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackToLogin}
+                className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </div>
           </form>
         )}
 
@@ -266,23 +388,55 @@ export default function Login({ onMfaVerified }: LoginProps) {
             <div>
               <input
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 required
                 maxLength={6}
                 autoFocus
-                className="w-full text-center tracking-widest text-2xl px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono"
+                className="w-full text-center tracking-widest text-2xl px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors font-mono font-bold"
                 placeholder="000000"
               />
+              <p className="text-xs text-slate-400 text-center mt-1">
+                Ensure device time is synchronized
+              </p>
             </div>
 
             <button
               type="submit"
-              disabled={loading || mfaCode.length !== 6}
-              className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading || mfaCode.trim().length !== 6}
+              className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {loading ? 'Verifying...' : 'Verify Code'}
+              {loading ? 'Verifying Code...' : 'Verify Code'}
             </button>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  const u = auth.currentUser || currentUser;
+                  if (u) {
+                    setError('');
+                    setMfaCode('');
+                    handleUserMfaCheck(u, true);
+                  }
+                }}
+                className="text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer font-medium transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Re-register / Reset MFA</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackToLogin}
+                className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            </div>
           </form>
         )}
       </div>

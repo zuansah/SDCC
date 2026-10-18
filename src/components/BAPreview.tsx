@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BAData } from '../types';
-import { ArrowLeft, Printer, Edit2, MapPin, AlertTriangle, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Printer, Edit2, MapPin, AlertTriangle, Download, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { exportBaReportToPdf } from '../utils/pdfExport';
 import { EvidenceImage, preloadBAEvidence } from '../services/evidenceStorage';
@@ -11,47 +11,25 @@ interface BAPreviewProps {
   onEdit: () => void;
 }
 
-export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number } | null>(null);
+interface PageContainerProps {
+  children: React.ReactNode;
+  title?: string;
+  pageNumber: number;
+}
 
-  useEffect(() => {
-    preloadBAEvidence(ba);
-  }, [ba]);
+const BAContext = React.createContext<{ ba: BAData; approverName: string } | null>(null);
 
-  const approverName = ba.status === 'accepted' && ba.acceptedBy 
-    ? ba.acceptedBy 
-    : '...................................';
+function useBAContext() {
+  const ctx = React.useContext(BAContext);
+  if (!ctx) {
+    throw new Error('useBAContext must be used within BAContext.Provider');
+  }
+  return ctx;
+}
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleDownloadPdf = async () => {
-    setIsExportingPdf(true);
-    try {
-      const pageElements = Array.from(document.querySelectorAll<HTMLElement>('.ba-report-page'));
-      if (pageElements.length === 0) {
-        alert('Could not find document pages to generate PDF.');
-        return;
-      }
-      const safeProjectName = (ba.projectName || 'SDWAN').replace(/[^a-zA-Z0-9_-]/g, '_');
-      const safeSiteName = (ba.siteName || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
-      await exportBaReportToPdf(
-        pageElements,
-        `BA_${safeProjectName}_${safeSiteName}.pdf`,
-        (current, total) => setPdfProgress({ current, total })
-      );
-    } catch (err: any) {
-      console.error('PDF export failed:', err);
-      alert('Failed to generate PDF: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setIsExportingPdf(false);
-      setPdfProgress(null);
-    }
-  };
-
-  const PageContainer = ({ children, title, pageNumber }: { children: React.ReactNode, title?: string, pageNumber: number }) => (
+function PageContainer({ children, title, pageNumber }: PageContainerProps) {
+  const { ba, approverName } = useBAContext();
+  return (
     <div className="ba-report-page bg-white mx-auto w-[297mm] h-[210mm] shadow-lg mb-8 relative print:shadow-none print:mb-0 print:w-full print:h-screen print:page-break-after-always overflow-hidden flex flex-row border-[3px] border-black m-8 print:m-0">
       <div className="flex-1 p-8 flex flex-col relative overflow-hidden">
         {children}
@@ -119,46 +97,128 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
       </div>
     </div>
   );
+}
 
-  const ImgBox = ({ label, src }: { label: string, src?: string }) => (
+function ImgBox({ label, src, fieldKey }: { label: string; src?: string; fieldKey?: string }) {
+  const { ba } = useBAContext();
+  const check = fieldKey ? ba.evidenceChecks?.[fieldKey] : undefined;
+
+  return (
     <div className="h-full w-full border border-dashed border-slate-400 rounded-lg flex flex-col items-center justify-center relative overflow-hidden bg-slate-50">
       {src ? (
-        <EvidenceImage src={src} alt={label} className="absolute inset-0 w-full h-full object-contain p-2" />
+        <>
+          <EvidenceImage src={src} alt={label} className="absolute inset-0 w-full h-full object-contain p-2" />
+          {check && check.status === 'verified' && (
+            <span 
+              data-html2canvas-ignore="true" 
+              className="absolute top-1.5 left-1.5 bg-emerald-700/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs print:hidden flex items-center gap-1 backdrop-blur-xs z-10"
+              title={check.verdictText || 'Verified by AI'}
+            >
+              ✓ AI Verified
+            </span>
+          )}
+          {check && check.status === 'warning' && (
+            <span 
+              data-html2canvas-ignore="true" 
+              className="absolute top-1.5 left-1.5 bg-amber-600/95 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs print:hidden flex items-center gap-1 backdrop-blur-xs z-10"
+              title={check.issues?.join(', ') || 'AI Warning'}
+            >
+              ⚠️ {check.issues?.[0] || 'AI Flagged'}
+            </span>
+          )}
+        </>
       ) : (
         <div className="text-slate-300 font-medium text-sm text-center px-4">{label}<br/><span className="text-xs font-normal">Sisipkan foto di sini</span></div>
       )}
     </div>
   );
+}
 
-  const Page789Layout = ({ title, pageNum, images }: { title: string, pageNum: number, images: {label: string, src?: string}[] }) => (
+interface Page789LayoutProps {
+  title: string;
+  pageNum: number;
+  images: { label: string; src?: string; fieldKey?: string }[];
+}
+
+function Page789Layout({ title, pageNum, images }: Page789LayoutProps) {
+  return (
     <PageContainer title={title} pageNumber={pageNum}>
       <div className="h-full flex flex-col gap-4">
          <div className="flex-1 flex gap-4">
            <div className="flex-1 flex flex-col">
-             <div className="flex-1"><ImgBox label="FOTO" src={images[0].src} /></div>
+             <div className="flex-1"><ImgBox label="FOTO" src={images[0].src} fieldKey={images[0].fieldKey} /></div>
              <div className="h-10 border border-slate-400 mt-2 flex items-center justify-center font-bold text-sm bg-slate-100">{images[0].label}</div>
            </div>
            <div className="flex-1 flex flex-col">
-             <div className="flex-1"><ImgBox label="FOTO" src={images[1].src} /></div>
+             <div className="flex-1"><ImgBox label="FOTO" src={images[1].src} fieldKey={images[1].fieldKey} /></div>
              <div className="h-10 border border-slate-400 mt-2 flex items-center justify-center font-bold text-sm bg-slate-100">{images[1].label}</div>
            </div>
          </div>
          <div className="flex-1 flex gap-4">
            <div className="flex-1 flex flex-col">
-             <div className="flex-1"><ImgBox label="FOTO" src={images[2].src} /></div>
+             <div className="flex-1"><ImgBox label="FOTO" src={images[2].src} fieldKey={images[2].fieldKey} /></div>
              <div className="h-10 border border-slate-400 mt-2 flex items-center justify-center font-bold text-sm bg-slate-100">{images[2].label}</div>
            </div>
            <div className="flex-1 flex flex-col">
-             <div className="flex-1"><ImgBox label="FOTO" src={images[3].src} /></div>
+             <div className="flex-1"><ImgBox label="FOTO" src={images[3].src} fieldKey={images[3].fieldKey} /></div>
              <div className="h-10 border border-slate-400 mt-2 flex items-center justify-center font-bold text-sm bg-slate-100">{images[3].label}</div>
            </div>
          </div>
       </div>
     </PageContainer>
   );
+}
+
+export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number } | null>(null);
+
+  useEffect(() => {
+    preloadBAEvidence(ba);
+  }, [ba]);
+
+  const approverName = ba.status === 'accepted' && ba.acceptedBy 
+    ? ba.acceptedBy 
+    : '...................................';
+
+  const evidenceCheckEntries = Object.entries(ba.evidenceChecks || {});
+  const verifiedCount = evidenceCheckEntries.filter(([_, v]) => v?.status === 'verified' || (v?.ok && (!v?.issues || v.issues.length === 0))).length;
+  const warningCount = evidenceCheckEntries.filter(([_, v]) => v?.status === 'warning' || (v && !v.ok)).length;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownloadPdf = async () => {
+    setIsExportingPdf(true);
+    setPdfProgress({ current: 0, total: 9 });
+    // Allow state to flush so UI shows loading state and DOM settles
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    try {
+      const pageElements = Array.from(document.querySelectorAll<HTMLElement>('.ba-report-page'));
+      if (pageElements.length === 0) {
+        alert('Could not find document pages to generate PDF.');
+        return;
+      }
+      const safeProjectName = (ba.projectName || 'SDWAN').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeSiteName = (ba.siteName || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+      await exportBaReportToPdf(
+        pageElements,
+        `BA_${safeProjectName}_${safeSiteName}.pdf`,
+        (current, total) => setPdfProgress({ current, total })
+      );
+    } catch (err: any) {
+      console.error('PDF export failed:', err);
+      alert('Failed to generate PDF: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsExportingPdf(false);
+      setPdfProgress(null);
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full bg-slate-100">
+    <BAContext.Provider value={{ ba, approverName }}>
+      <div className="flex flex-col h-full bg-slate-100">
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -173,13 +233,27 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
       />
       {/* Top Action Bar (hidden in print) */}
       <div className="px-8 py-4 bg-white border-b border-slate-200 sticky top-0 z-20 flex items-center justify-between shadow-sm print:hidden shrink-0">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </button>
+          {verifiedCount > 0 && (
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{verifiedCount} Photos AI Verified</span>
+            </span>
+          )}
+          {warningCount > 0 && (
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>{warningCount} AI Warnings</span>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <button
             onClick={onEdit}
@@ -326,6 +400,7 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
                 )
               ) : ba.mapCoordinateLink ? (
                 <iframe 
+                  data-html2canvas-ignore="true"
                   className="absolute inset-0 w-full h-full"
                   frameBorder="0"
                   scrolling="no"
@@ -388,10 +463,10 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
           title="PHOTO ATTACHMENT" 
           pageNum={7}
           images={[
-            { label: 'Foto Tampak Depan', src: ba.frontViewImg },
-            { label: 'Foto Bersama PIC', src: ba.withPicImg },
-            { label: 'Rack Before', src: ba.rackBeforeImg },
-            { label: 'Rack After', src: ba.rackAfterImg }
+            { label: 'Foto Tampak Depan', src: ba.frontViewImg, fieldKey: 'frontViewImg' },
+            { label: 'Foto Bersama PIC', src: ba.withPicImg, fieldKey: 'withPicImg' },
+            { label: 'Rack Before', src: ba.rackBeforeImg, fieldKey: 'rackBeforeImg' },
+            { label: 'Rack After', src: ba.rackAfterImg, fieldKey: 'rackAfterImg' }
           ]} 
         />
 
@@ -400,10 +475,10 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
           title="PHOTO ATTACHMENT" 
           pageNum={8}
           images={[
-            { label: 'SN Perangkat SD-WAN', src: ba.snSdwanImg },
-            { label: 'Asset Label', src: ba.snOntImg },
-            { label: 'Speedtest Global', src: ba.speedtestGlobalImg },
-            { label: 'Speedtest Domestik', src: ba.speedtestDomestikImg }
+            { label: 'SN Perangkat SD-WAN', src: ba.snSdwanImg, fieldKey: 'snSdwanImg' },
+            { label: 'Asset Label', src: ba.snOntImg, fieldKey: 'snOntImg' },
+            { label: 'Speedtest Global', src: ba.speedtestGlobalImg, fieldKey: 'speedtestGlobalImg' },
+            { label: 'Speedtest Domestik', src: ba.speedtestDomestikImg, fieldKey: 'speedtestDomestikImg' }
           ]} 
         />
 
@@ -412,14 +487,15 @@ export default function BAPreview({ ba, onBack, onEdit }: BAPreviewProps) {
           title="PHOTO ATTACHMENT" 
           pageNum={9}
           images={[
-            { label: 'Cabling SD-WAN', src: ba.cablingSdwanImg },
-            { label: 'SD-WAN Box', src: ba.sdwanBoxImg },
-            { label: 'Ping - Traceroute', src: ba.pingTracerouteImg },
-            { label: 'Ping P2P Astinet', src: ba.pingAstinetImg }
+            { label: 'Cabling SD-WAN', src: ba.cablingSdwanImg, fieldKey: 'cablingSdwanImg' },
+            { label: 'SD-WAN Box', src: ba.sdwanBoxImg, fieldKey: 'sdwanBoxImg' },
+            { label: 'Ping - Traceroute', src: ba.pingTracerouteImg, fieldKey: 'pingTracerouteImg' },
+            { label: 'Ping P2P Astinet', src: ba.pingAstinetImg, fieldKey: 'pingAstinetImg' }
           ]} 
         />
 
       </div>
     </div>
+    </BAContext.Provider>
   );
 }

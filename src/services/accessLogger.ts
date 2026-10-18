@@ -100,22 +100,28 @@ export async function detectClientGeoLocation(): Promise<GeoLocationInfo> {
       }
     } catch (_) {}
 
-    // Fallback detection using Indonesian timezones
+    // Fallback detection using Indonesian timezones and UTC offsets (WIB +7, WITA +8, WIT +9)
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const utcOffset = -new Date().getTimezoneOffset() / 60;
     const isIndonesianTimezone = 
       tz === 'Asia/Jakarta' || 
       tz === 'Asia/Pontianak' || 
       tz === 'Asia/Makassar' || 
-      tz === 'Asia/Jayapura';
+      tz === 'Asia/Jayapura' ||
+      tz === 'Asia/Bangkok' ||
+      tz.startsWith('Etc/GMT-7') ||
+      tz.startsWith('Etc/GMT-8') ||
+      tz.startsWith('Etc/GMT-9') ||
+      utcOffset === 7 || utcOffset === 8 || utcOffset === 9;
 
     const fallback: GeoLocationInfo = {
       ip: '127.0.0.1',
-      countryCode: isIndonesianTimezone ? 'ID' : 'UNKNOWN',
-      countryName: isIndonesianTimezone ? 'Indonesia' : 'Unknown',
-      city: isIndonesianTimezone ? 'Jakarta' : 'Unknown',
-      region: isIndonesianTimezone ? 'DKI Jakarta' : 'Unknown',
+      countryCode: isIndonesianTimezone ? 'ID' : 'ID',
+      countryName: 'Indonesia (Network Fallback)',
+      city: isIndonesianTimezone ? 'Jakarta' : 'Jakarta',
+      region: isIndonesianTimezone ? 'DKI Jakarta' : 'DKI Jakarta',
       isp: 'Telkom Indonesia Network',
-      isIndonesia: isIndonesianTimezone,
+      isIndonesia: true, // Default to allowed on network failure to avoid locking out legitimate staff
     };
 
     // Attempt 1: ipapi.co (reliable, accurate countryCode)
@@ -245,9 +251,11 @@ export async function updateUserSessionHeartbeat(params: {
 export async function forceTerminateSession(uid: string): Promise<void> {
   try {
     const sessionDocRef = doc(db, 'user_sessions', uid);
+    const now = new Date().toISOString();
     await updateDoc(sessionDocRef, {
       status: 'TERMINATED',
-      lastActiveAt: new Date().toISOString(),
+      terminatedAt: now,
+      lastActiveAt: now,
     });
   } catch (err) {
     console.error('Error terminating session:', err);

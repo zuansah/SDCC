@@ -57,4 +57,28 @@ export interface BAData {
   sdwanBoxImg?: string;
   pingTracerouteImg?: string;
   pingAstinetImg?: string;
+
+  // AI Evidence Verification (Gemini Vision)
+  evidenceChecks?: Record<string, EvidenceCheckVerdict>;
+}
+
+export interface EvidenceCheckVerdict {
+  ok: boolean;
+  subjectMatch: boolean;
+  status: 'checking' | 'verified' | 'warning' | 'unchecked';
+  extracted?: {
+    serialNumber?: string;
+    deviceModel?: string;
+    pingResult?: string;
+    latencyMs?: number;
+    downloadMbps?: number;
+    uploadMbps?: number;
+    details?: string;
+  };
+  issues: string[];
+  checkedAt?: string;
+  modelUsed?: string;
+  verdictText?: string;
+  inventoryVerified?: boolean;
+  contradictsForm?: boolean;
 }
